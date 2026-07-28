@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hub de Proyectos Privado</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FIREBASE SDKs (VERSIÓN COMPATIBLE) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <script>
+        // TUS LLAVES EXACTAS DE FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyAoZ2tUJfI-TD_BGTeH5cPIfUGypZI6NTw",
+            authDomain: "hub-de-proyectos-52620.firebaseapp.com",
+            projectId: "hub-de-proyectos-52620",
+            storageBucket: "hub-de-proyectos-52620.firebasestorage.app",
+            messagingSenderId: "886778136503",
+            appId: "1:886778136503:web:b0e1daf852dc36dc860a32",
+            measurementId: "G-RFCRYDF89R"
+        };
+
+        // INICIALIZAR FIREBASE Y FIRESTORE
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+    </script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans h-screen flex overflow-hidden">
+
+    <!-- Menú Lateral -->
+    <aside id="sidebar" class="w-64 bg-gray-800 p-5 flex flex-col hidden border-r border-gray-700">
+        <h2 class="text-2xl font-bold text-orange-500 mb-8 tracking-wider">EL HUB</h2>
+        <nav class="flex-1 space-y-4">
+            <button onclick="showTab('projects')" class="w-full text-left py-2 px-4 rounded hover:bg-gray-700 transition">📁 Proyectos</button>
+            <button onclick="showTab('chat')" class="w-full text-left py-2 px-4 rounded hover:bg-gray-700 transition">💬 Comunidad</button>
+            <button id="btnAdminUsers" onclick="showTab('users')" class="w-full text-left py-2 px-4 rounded hover:bg-gray-700 transition hidden text-orange-400">👥 Moderar Usuarios</button>
+            <button id="btnAdminLogs" onclick="showTab('logs')" class="w-full text-left py-2 px-4 rounded hover:bg-gray-700 transition hidden text-red-400">🚨 Registro de Actividad</button>
+        </nav>
+        <div class="mt-auto border-t border-gray-700 pt-4">
+            <p id="currentUserDisplay" class="text-sm text-gray-400 mb-2"></p>
+            <button onclick="logout()" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded">Cerrar Sesión</button>
+        </div>
+    </aside>
+
+    <!-- Área Principal -->
+    <main class="flex-1 p-8 overflow-y-auto relative">
+        
+        <!-- Pantalla de Login -->
+        <div id="loginScreen" class="max-w-md mx-auto mt-20 bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700">
+            <h1 class="text-3xl font-bold text-center text-white mb-6">Acceso al Hub</h1>
+            <input type="text" id="username" placeholder="Nombre de Usuario" class="w-full bg-gray-900 border border-gray-700 text-white px-4 py-2 rounded mb-4 focus:outline-none focus:border-orange-500">
+            <input type="password" id="password" placeholder="Contraseña" class="w-full bg-gray-900 border border-gray-700 text-white px-4 py-2 rounded mb-6 focus:outline-none focus:border-orange-500">
+            <button onclick="login()" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded mb-4">Ingresar</button>
+            <button onclick="requestAccess()" class="w-full bg-transparent border border-gray-600 hover:bg-gray-700 text-gray-300 font-bold py-2 px-4 rounded">Solicitar Acceso (Nuevos)</button>
+            <p id="loginMessage" class="text-center mt-4 text-sm"></p>
+        </div>
+
+        <!-- Pestaña Proyectos -->
+        <div id="projectsTab" class="hidden">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-3xl font-bold">Proyectos Alojados</h2>
+                <button onclick="openNewProjectModal()" class="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded font-bold">+ Subir Proyecto</button>
+            </div>
+            <div id="projectsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+
+        <!-- Pestaña Chat -->
+        <div id="chatTab" class="hidden h-full flex flex-col">
+            <h2 class="text-3xl font-bold mb-4">Foro de Comunidad</h2>
+            <div id="chatBox" class="flex-1 bg-gray-800 rounded-lg p-4 mb-4 overflow-y-auto border border-gray-700 space-y-3"></div>
+            <div class="flex gap-2">
+                <input type="text" id="chatInput" placeholder="Escribe un mensaje... usa @nombre para mencionar" class="flex-1 bg-gray-900 border border-gray-700 text-white px-4 py-3 rounded focus:outline-none focus:border-orange-500" onkeypress="if(event.key === 'Enter') sendMessage()">
+                <button onclick="sendMessage()" class="bg-orange-600 hover:bg-orange-700 px-6 font-bold rounded">Enviar</button>
+            </div>
+        </div>
+
+        <!-- Pestaña Usuarios (Admin) -->
+        <div id="usersTab" class="hidden">
+            <h2 class="text-3xl font-bold mb-8">Gestión de Usuarios</h2>
+            <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-900">
+                        <tr><th class="p-4">Usuario</th><th class="p-4">Estado / Rol</th><th class="p-4">Acciones</th></tr>
+                    </thead>
+                    <tbody id="usersList"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pestaña Logs (Admin) -->
+        <div id="logsTab" class="hidden">
+            <h2 class="text-3xl font-bold mb-4 text-red-400">Registro de Actividad (Auditoría)</h2>
+            <p class="text-gray-400 mb-6">Actividad registrada en la nube de Firebase.</p>
+            <div id="logsBox" class="bg-gray-800 rounded-lg p-4 h-[600px] overflow-y-auto border border-gray-700 space-y-2 font-mono text-sm"></div>
+        </div>
+
+    </main>
+
+    <!-- Modal Términos de Servicio -->
+    <div id="termsModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg max-w-2xl w-full border border-gray-700">
+            <h2 id="termsTitle" class="text-2xl font-bold text-orange-500 mb-4"></h2>
+            <div id="termsContent" class="text-gray-300 space-y-4 mb-8 h-64 overflow-y-auto pr-2"></div>
+            <button onclick="acceptTerms()" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-4 rounded">He leído y Acepto las Condiciones</button>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Proyecto -->
+    <div id="newProjectModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-40">
+        <div class="bg-gray-800 p-8 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
+            <h2 class="text-2xl font-bold mb-6">Crear Nuevo Proyecto</h2>
+            <input type="text" id="projTitle" placeholder="Título del Proyecto" class="w-full bg-gray-900 border border-gray-700 px-4 py-2 rounded mb-4">
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div><label class="text-sm text-gray-400">HTML</label><textarea id="projHTML" rows="6" class="w-full bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm"></textarea></div>
+                <div><label class="text-sm text-gray-400">JavaScript</label><textarea id="projJS" rows="6" class="w-full bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm"></textarea></div>
+                <div class="col-span-2"><label class="text-sm text-gray-400">CSS</label><textarea id="projCSS" rows="4" class="w-full bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm"></textarea></div>
+            </div>
+            <label class="flex items-center space-x-2 mb-6 cursor-pointer">
+                <input type="checkbox" id="projPublic" class="w-5 h-5 accent-orange-600">
+                <span>Hacer público (Visible para toda la familia/amigos aprobados)</span>
+            </label>
+            <div class="flex justify-end space-x-4">
+                <button onclick="closeNewProjectModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded">Cancelar</button>
+                <button onclick="saveProject()" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded font-bold">Guardar Proyecto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Sandbox -->
+    <div id="sandboxModal" class="fixed inset-0 bg-black bg-opacity-90 hidden flex flex-col z-50">
+        <div class="p-4 bg-gray-800 flex justify-between items-center">
+            <h3 id="sandboxTitle" class="font-bold text-lg">Ejecutando Proyecto</h3>
+            <button onclick="closeSandbox()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-bold">Cerrar Entorno</button>
+        </div>
+        <iframe id="sandboxFrame" sandbox="allow-scripts" class="flex-1 w-full bg-white"></iframe>
+    </div>
+
+    <script>
+        // VARIABLES GLOBALES (Ahora alimentadas por Firebase)
+        let currentUser = null;
+        let unsubscribeProjects = null;
+        let unsubscribeChat = null;
+
+        // TEXTOS DE LOS TÉRMINOS
+        const TERMS_USER = `
+            <p><strong>Bienvenido al Hub de Proyectos Privado.</strong></p>
+            <p>1. Este es un entorno estrictamente controlado y administrado por <strong>GAAdmin</strong>.</p>
+            <p>2. <strong>Regla del Sandbox:</strong> Todo el código web (HTML/JS) que subas o ejecutes aquí está aislado. Tu código no puede acceder a los datos de otros usuarios.</p>
+            <p>3. Prohibido subir material malicioso. Toda tu actividad se registra en Firebase para auditoría del Administrador.</p>
+            <p>4. El Administrador puede revocar tu acceso en cualquier momento.</p>
+        `;
+        const TERMS_COADMIN = `
+            <p><strong>Acuerdo de Co-Administrador.</strong></p>
+            <p>1. Ahora tienes el deber de proteger la integridad de la plataforma.</p>
+            <p>2. Puedes aprobar a nuevos miembros y ocultar proyectos que rompan las reglas de convivencia.</p>
+            <p>3. No tienes permisos para alterar la cuenta de GAAdmin.</p>
+        `;
+
+        function logActivity(action) {
+            const time = new Date().getTime();
+            db.collection("logs").add({
+                action: action,
+                timestamp: time,
+                dateStr: new Date().toLocaleString()
+            }).catch(e => console.error("Error guardando log:", e));
+        }
+
+        // SISTEMA DE ACCESO
+        async function login() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const msg = document.getElementById('loginMessage');
+
+            // Hardcoded Admin Supremo
+            if(u === 'GAAdmin' && p === '9GAO282517219') {
+                currentUser = { username: 'GAAdmin', role: 'admin', termsAccepted: true, coAdminTermsAccepted: true, docId: 'admin_doc' };
+                logActivity('🚨 GAAdmin ha iniciado sesión.');
+                initApp();
+                return;
+            }
+
+            try {
+                const snapshot = await db.collection("users").where("username", "==", u).where("password", "==", p).get();
+                if (snapshot.empty) {
+                    msg.textContent = "Credenciales incorrectas.";
+                    msg.className = "text-center mt-4 text-sm text-red-500";
+                    logActivity(`Intento de acceso fallido: ${u}`);
+                    return;
+                }
+
+                const userDoc = snapshot.docs[0];
+                const userData = userDoc.data();
+                
+                if(userData.status === 'pending') {
+                    msg.textContent = "Tu cuenta aún está pendiente de aprobación.";
+                    msg.className = "text-center mt-4 text-sm text-yellow-500";
+                    return;
+                }
+
+                currentUser = { ...userData, docId: userDoc.id };
+                logActivity(`✅ Usuario '${u}' ha iniciado sesión.`);
+                checkTerms();
+
+            } catch (error) {
+                console.error("Error en login:", error);
+                msg.textContent = "Error al conectar con la base de datos.";
+            }
+        }
+
+        async function requestAccess() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const msg = document.getElementById('loginMessage');
+            
+            if(!u || !p || u === 'GAAdmin') {
+                msg.textContent = "Ingresa un usuario y contraseña válidos.";
+                return;
+            }
+
+            try {
+                const snapshot = await db.collection("users").where("username", "==", u).get();
+                if (!snapshot.empty) {
+                    msg.textContent = "Este usuario ya existe.";
+                    return;
+                }
+
+                await db.collection("users").add({ 
+                    username: u, 
+                    password: p, 
+                    status: 'pending', 
+                    role: 'user', 
+                    termsAccepted: false, 
+                    coAdminTermsAccepted: false 
+                });
+                
+                logActivity(`🔔 NUEVA SOLICITUD: '${u}' quiere unirse al Hub.`);
+                msg.textContent = "Solicitud enviada. Espera la aprobación de GAAdmin.";
+                msg.className = "text-center mt-4 text-sm text-green-500";
+            } catch (error) {
+                console.error("Error en solicitud:", error);
+            }
+        }
+
+        // FLUJO DE TÉRMINOS
+        function checkTerms() {
+            if (!currentUser.termsAccepted) {
+                showTerms("Términos de Seguridad Obligatorios", TERMS_USER, "user");
+            } else if (currentUser.role === 'coadmin' && !currentUser.coAdminTermsAccepted) {
+                showTerms("Nuevos Privilegios: Co-Administrador", TERMS_COADMIN, "coadmin");
+            } else {
+                initApp();
+            }
+        }
+
+        let pendingTermType = "";
+        function showTerms(title, content, type) {
+            document.getElementById('termsTitle').innerHTML = title;
+            document.getElementById('termsContent').innerHTML = content;
+            document.getElementById('termsModal').classList.remove('hidden');
+            pendingTermType = type;
+        }
+
+        async function acceptTerms() {
+            document.getElementById('termsModal').classList.add('hidden');
+            if(currentUser.username !== 'GAAdmin') {
+                const updateData = {};
+                if (pendingTermType === "user") updateData.termsAccepted = true;
+                if (pendingTermType === "coadmin") updateData.coAdminTermsAccepted = true;
+                
+                await db.collection("users").doc(currentUser.docId).update(updateData);
+                currentUser = { ...currentUser, ...updateData };
+                logActivity(`📝 '${currentUser.username}' ha firmado los Acuerdos (${pendingTermType}).`);
+            }
+            checkTerms();
+        }
+
+        // INICIALIZACIÓN
+        function initApp() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('sidebar').classList.remove('hidden');
+            document.getElementById('currentUserDisplay').textContent = `Conectado como: ${currentUser.username} (${currentUser.role})`;
+            
+            if(currentUser.role === 'admin' || currentUser.role === 'coadmin') {
+                document.getElementById('btnAdminUsers').classList.remove('hidden');
+            }
+            if(currentUser.role === 'admin') {
+                document.getElementById('btnAdminLogs').classList.remove('hidden');
+            }
+            
+            // Iniciar Escuchadores en Tiempo Real
+            startRealtimeListeners();
+            showTab('projects');
+        }
+
+        function logout() {
+            if(currentUser) logActivity(`Salida del sistema: '${currentUser.username}'`);
+            currentUser = null;
+            
+            // Detener escuchadores
+            if(unsubscribeProjects) unsubscribeProjects();
+            if(unsubscribeChat) unsubscribeChat();
+
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('sidebar').classList.add('hidden');
+            document.getElementById('projectsTab').classList.add('hidden');
+            document.getElementById('usersTab').classList.add('hidden');
+            document.getElementById('chatTab').classList.add('hidden');
+            document.getElementById('logsTab').classList.add('hidden');
+            document.getElementById('loginMessage').textContent = "";
+            document.getElementById('username').value = "";
+            document.getElementById('password').value = "";
+        }
+
+        function showTab(tab) {
+            ['projectsTab', 'usersTab', 'chatTab', 'logsTab'].forEach(t => document.getElementById(t).classList.add('hidden'));
+            document.getElementById(tab + 'Tab').classList.remove('hidden');
+            if(tab === 'users' && (currentUser.role === 'admin' || currentUser.role === 'coadmin')) loadUsers();
+            if(tab === 'logs' && currentUser.role === 'admin') loadLogs();
+        }
+
+        // TIEMPO REAL CON FIREBASE
+        function startRealtimeListeners() {
+            // Escuchar Proyectos
+            unsubscribeProjects = db.collection("projects").orderBy("timestamp", "desc").onSnapshot(snapshot => {
+                const grid = document.getElementById('projectsGrid');
+                grid.innerHTML = '';
+                
+                snapshot.forEach(doc => {
+                    const p = doc.data();
+                    const id = doc.id;
+                    
+                    if(!p.isPublic && p.owner !== currentUser.username && currentUser.role !== 'admin') return;
+                    
+                    const card = document.createElement('div');
+                    card.className = "bg-gray-800 p-6 rounded-lg border border-gray-700 flex flex-col";
+                    card.innerHTML = `
+                        <h3 class="text-xl font-bold text-white mb-2">${p.title}</h3>
+                        <p class="text-xs text-gray-400 mb-4">Autor: ${p.owner} | ${p.isPublic ? '🌐 Público' : '🔒 Privado'}</p>
+                        <button onclick="runProject('${p.html.replace(/'/g, "\\'")}', '${p.css.replace(/'/g, "\\'")}', '${p.js.replace(/'/g, "\\'")}', '${p.title}')" class="mt-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded">▶ Ejecutar Código</button>
+                    `;
+                    grid.appendChild(card);
+                });
+            });
+
+            // Escuchar Chat
+            unsubscribeChat = db.collection("chat").orderBy("timestamp", "asc").onSnapshot(snapshot => {
+                const box = document.getElementById('chatBox');
+                box.innerHTML = '';
+                snapshot.forEach(doc => {
+                    const msg = doc.data();
+                    const div = document.createElement('div');
+                    div.className = "bg-gray-900 p-3 rounded text-sm";
+                    let text = msg.text.replace(/@(\w+)/g, '<span class="text-orange-500 font-bold">@$1</span>');
+                    div.innerHTML = `<span class="font-bold ${msg.user === 'GAAdmin' ? 'text-red-500' : 'text-blue-400'}">${msg.user}:</span> <span class="text-gray-200">${text}</span> <span class="text-xs text-gray-500 ml-2">${msg.timeStr}</span>`;
+                    box.appendChild(div);
+                });
+                box.scrollTop = box.scrollHeight;
+            });
+        }
+
+        // PROYECTOS Y SANDBOX
+        function openNewProjectModal() { document.getElementById('newProjectModal').classList.remove('hidden'); }
+        function closeNewProjectModal() { document.getElementById('newProjectModal').classList.add('hidden'); }
+
+        async function saveProject() {
+            const title = document.getElementById('projTitle').value;
+            const html = document.getElementById('projHTML').value;
+            const css = document.getElementById('projCSS').value;
+            const js = document.getElementById('projJS').value;
+            const isPublic = document.getElementById('projPublic').checked;
+
+            if(!title) return alert("Se requiere un título");
+
+            await db.collection("projects").add({
+                title, html, css, js, isPublic, owner: currentUser.username, timestamp: new Date().getTime()
+            });
+            
+            logActivity(`📦 '${currentUser.username}' creó el proyecto '${title}'.`);
+            closeNewProjectModal();
+        }
+
+        function runProject(html, css, js, title) {
+            logActivity(`▶ '${currentUser.username}' ejecutó '${title}' en Sandbox.`);
+            const combinedCode = `<html><head><style>${css}</style></head><body>${html}<script>${js}<\/script></body></html>`;
+            document.getElementById('sandboxTitle').textContent = `Ejecutando: ${title}`;
+            document.getElementById('sandboxFrame').srcdoc = combinedCode;
+            document.getElementById('sandboxModal').classList.remove('hidden');
+        }
+
+        function closeSandbox() {
+            document.getElementById('sandboxModal').classList.add('hidden');
+            document.getElementById('sandboxFrame').srcdoc = ""; 
+        }
+
+        // CHAT DE COMUNIDAD
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if(!text) return;
+            
+            await db.collection("chat").add({
+                user: currentUser.username,
+                text: text,
+                timestamp: new Date().getTime(),
+                timeStr: new Date().toLocaleTimeString()
+            });
+            input.value = '';
+        }
+
+        // ADMINISTRACIÓN (Carga manual para ahorrar recursos)
+        async function loadUsers() {
+            const snapshot = await db.collection("users").get();
+            const list = document.getElementById('usersList');
+            list.innerHTML = '';
+            snapshot.forEach(doc => {
+                const u = doc.data();
+                const id = doc.id;
+                const tr = document.createElement('tr');
+                tr.className = "border-t border-gray-700";
+                tr.innerHTML = `
+                    <td class="p-4 font-bold text-gray-300">${u.username}</td>
+                    <td class="p-4"><span class="px-2 py-1 rounded text-xs ${u.status === 'pending' ? 'bg-yellow-600' : 'bg-green-600'}">${u.status}</span> <span class="text-gray-500 text-sm ml-2">(${u.role})</span></td>
+                    <td class="p-4 space-x-2">
+                        ${u.status === 'pending' ? `<button onclick="updateUserRole('${id}', 'approved', 'user', '${u.username}')" class="bg-green-600 px-3 py-1 rounded text-xs">Aprobar</button>` : ''}
+                        ${currentUser.role === 'admin' && u.role === 'user' && u.status !== 'pending' ? `<button onclick="updateUserRole('${id}', 'approved', 'coadmin', '${u.username}')" class="bg-blue-600 px-3 py-1 rounded text-xs">Hacer CoAdmin</button>` : ''}
+                        ${currentUser.role === 'admin' ? `<button onclick="deleteUser('${id}', '${u.username}')" class="bg-red-600 px-3 py-1 rounded text-xs">Eliminar</button>` : ''}
+                    </td>
+                `;
+                list.appendChild(tr);
+            });
+        }
+
+        async function loadLogs() {
+            const snapshot = await db.collection("logs").orderBy("timestamp", "desc").limit(50).get();
+            const box = document.getElementById('logsBox');
+            box.innerHTML = '';
+            snapshot.forEach(doc => {
+                box.innerHTML += `<div class="border-b border-gray-700 pb-1">[${doc.data().dateStr}] ${doc.data().action}</div>`;
+            });
+        }
+
+        async function updateUserRole(id, status, role, name) {
+            await db.collection("users").doc(id).update({ status, role });
+            logActivity(`🛡️ Cambio de rol para '${name}': ${role}`);
+            loadUsers();
+        }
+
+        async function deleteUser(id, name) {
+            if(confirm(`¿Seguro que quieres eliminar a ${name}?`)) {
+                await db.collection("users").doc(id).delete();
+                logActivity(`🗑️ Usuario ELIMINADO: '${name}'`);
+                loadUsers();
+            }
+        }
+    </script>
+</body>
+</html>
