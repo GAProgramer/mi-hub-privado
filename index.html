@@ -66,25 +66,6 @@
             <div id="projectsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
         </div>
 
-        <!-- Pestaña Workspace (Taller) -->
-        <div id="workspaceTab" class="hidden h-full flex flex-col">
-            <div class="flex justify-between items-center mb-4">
-                <h2 id="wsTitle" class="text-2xl font-bold text-orange-500">Taller</h2>
-                <div class="space-x-2">
-                    <button id="btnSaveWorkspace" onclick="saveWorkspaceChanges()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded font-bold transition">💾 Guardar Cambios</button>
-                    <button onclick="closeWorkspace()" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded font-bold">Volver</button>
-                </div>
-            </div>
-            <div class="flex-1 flex gap-4 h-[calc(100vh-200px)]">
-                <div class="w-1/2 flex flex-col gap-4">
-                    <div class="flex-1 flex flex-col"><label class="text-sm text-gray-400">HTML</label><textarea id="wsHTML" onkeyup="updatePreview()" class="flex-1 bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm resize-none"></textarea></div>
-                    <div class="flex-1 flex flex-col"><label class="text-sm text-gray-400">CSS</label><textarea id="wsCSS" onkeyup="updatePreview()" class="flex-1 bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm resize-none"></textarea></div>
-                    <div class="flex-1 flex flex-col"><label class="text-sm text-gray-400">JS</label><textarea id="wsJS" onkeyup="updatePreview()" class="flex-1 bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm resize-none"></textarea></div>
-                </div>
-                <div class="w-1/2 bg-white rounded-lg border border-gray-700 overflow-hidden"><iframe id="wsPreview" class="w-full h-full"></iframe></div>
-            </div>
-        </div>
-
         <!-- Pestaña Chat -->
         <div id="chatTab" class="hidden h-full flex flex-col relative">
             <div class="flex justify-between items-center mb-4">
@@ -404,7 +385,9 @@
                         <p class="text-xs text-orange-400 mb-2 font-mono">Por: ${p.owner}</p>
                         <p class="text-sm text-gray-300 mb-4 line-clamp-3">${p.description || 'Sin descripción.'}</p>
                         <div class="mt-auto flex flex-col gap-2">
-                            <button onclick="openWorkspace('${id}')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition">🛠️ Abrir en el Taller</button>
+                            <button onclick="window.location.href='taller.html?id=${id}'" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition">
+                                🛠️ Abrir en el Taller
+                            </button>
                             ${(isOwner || isAdmin) ? `<button onclick="deleteProject('${id}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 rounded transition text-sm">🗑️ Borrar Proyecto</button>` : ''}
                         </div>
                     `;
@@ -498,62 +481,6 @@
             
             logActivity(`📦 '${currentUser.username}' creó el proyecto '${title}'.`);
             closeNewProjectModal();
-        }
-
-        async function openWorkspace(id) {
-            try {
-                const doc = await db.collection("projects").doc(id).get();
-                if (doc.exists) {
-                    const p = doc.data();
-                    
-                    document.getElementById('projectsTab').classList.add('hidden');
-                    document.getElementById('workspaceTab').classList.remove('hidden');
-
-                    // CORRECCIÓN: Ahora busca wsHTML, wsCSS y wsJS (IDs correctos)
-                    document.getElementById('wsHTML').value = p.html || '';
-                    document.getElementById('wsCSS').value = p.css || '';
-                    document.getElementById('wsJS').value = p.js || '';
-                    
-                    window.currentEditingProjectId = id;
-                    updatePreview();
-                }
-            } catch (error) {
-                console.error("Error abriendo el taller:", error);
-            }
-        }
-
-        function closeWorkspace() {
-            document.getElementById('workspaceTab').classList.add('hidden');
-            document.getElementById('projectsTab').classList.remove('hidden');
-            window.currentEditingProjectId = null;
-        }
-
-        function updatePreview() {
-            // CORRECCIÓN: Lee de los IDs correctos para pintar el cuadro lateral
-            const html = document.getElementById('wsHTML').value;
-            const css = `<style>${document.getElementById('wsCSS').value}</style>`;
-            const js = `<script>${document.getElementById('wsJS').value}<\/script>`;
-            const iframe = document.getElementById('wsPreview'); // ID corregido
-            
-            iframe.srcdoc = html + css + js;
-        }
-
-        async function saveWorkspaceChanges() {
-            if (!window.currentEditingProjectId) return;
-            
-            // CORRECCIÓN: Guarda desde los IDs correctos
-            const html = document.getElementById('wsHTML').value;
-            const css = document.getElementById('wsCSS').value;
-            const js = document.getElementById('wsJS').value;
-
-            await db.collection("projects").doc(window.currentEditingProjectId).update({
-                html: html,
-                css: css,
-                js: js,
-                lastUpdated: new Date().getTime()
-            });
-            
-            alert("¡Cambios guardados exitosamente!");
         }
 
         async function deleteProject(id) {

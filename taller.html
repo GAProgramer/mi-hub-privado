@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taller IDE - Hub de Proyectos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FIREBASE SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <script>
+        // PEGA TUS LLAVES DE FIREBASE AQUÍ (Las mismas de index.html)
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "TU_AUTH_DOMAIN",
+            projectId: "TU_PROJECT_ID",
+            storageBucket: "TU_STORAGE_BUCKET",
+            messagingSenderId: "TU_SENDER_ID",
+            appId: "TU_APP_ID"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+    </script>
+</head>
+<!-- Usamos los colores exactos de VS Code (#1e1e1e para el fondo, #252526 para la barra lateral) -->
+<body class="bg-[#1e1e1e] text-[#cccccc] font-sans h-screen flex overflow-hidden">
+
+    <!-- BARRA LATERAL (File Explorer & Outline) -->
+    <aside id="sidebar" class="w-64 bg-[#252526] flex flex-col border-r border-[#333] transition-all duration-300">
+        <!-- Archivos -->
+        <div class="flex justify-between items-center p-2 text-xs uppercase tracking-wider text-gray-400 border-b border-[#333]">
+            <span id="sidebarTitle">Explorador</span>
+            <button onclick="toggleSidebar()" class="hover:text-white px-1" title="Aplastar barra lateral">◀</button>
+        </div>
+        <ul id="fileList" class="p-2 space-y-1 text-sm font-mono">
+            <li onclick="switchTab('html')" id="tab-html" class="cursor-pointer bg-[#37373d] p-1.5 rounded text-orange-400 border-l-2 border-transparent">📄 index.html</li>
+            <li onclick="switchTab('css')" id="tab-css" class="cursor-pointer hover:bg-[#2a2d2e] p-1.5 rounded text-blue-400 border-l-2 border-transparent"># style.css</li>
+            <li onclick="switchTab('js')" id="tab-js" class="cursor-pointer hover:bg-[#2a2d2e] p-1.5 rounded text-yellow-400 border-l-2 border-transparent">{} script.js</li>
+        </ul>
+
+        <!-- Outline (Esquema) -->
+        <div class="p-2 text-xs uppercase tracking-wider text-gray-400 border-t border-b border-[#333] mt-2 flex justify-between items-center">
+            <span>Outline</span>
+            <button onclick="generateOutline()" class="hover:text-white" title="Actualizar Outline">🔄</button>
+        </div>
+        <div id="outlineBox" class="flex-1 p-2 overflow-y-auto text-xs font-mono text-blue-300 space-y-1 whitespace-nowrap">
+            <!-- El JS llenará esto leyendo tu HTML -->
+        </div>
+    </aside>
+
+    <!-- ÁREA PRINCIPAL (Editor y Botones) -->
+    <main class="flex-1 flex flex-col relative min-w-0">
+        
+        <!-- Barra Superior (Topbar) -->
+        <header class="bg-[#2d2d2d] flex justify-between items-center p-2 border-b border-[#1e1e1e] shadow-md z-10">
+            <div class="flex items-center">
+                <button id="btnExpandSidebar" onclick="toggleSidebar()" class="hidden text-gray-400 hover:text-white mr-4 text-xl">▶</button>
+                <div id="currentFileTitle" class="bg-[#1e1e1e] px-6 py-1.5 text-sm font-mono border-t-2 border-blue-500 text-white rounded-t-sm">
+                    index.html
+                </div>
+            </div>
+            
+            <!-- Botones de Acción -->
+            <div class="flex gap-2">
+                <span id="saveStatus" class="text-xs text-gray-400 self-center mr-2"></span>
+                <button onclick="saveProjectData()" class="bg-[#007acc] hover:bg-[#005a9e] px-4 py-1.5 rounded-md text-sm text-white flex items-center font-bold transition">
+                    💾 Guardar
+                </button>
+                <button onclick="runPreview()" class="bg-green-600 hover:bg-green-700 px-4 py-1.5 rounded-md text-sm text-white flex items-center font-bold transition">
+                    ▶ Visualización
+                </button>
+                <button onclick="window.location.href='index.html'" class="bg-[#333] hover:bg-[#444] border border-[#555] px-4 py-1.5 rounded-md text-sm text-white font-bold transition">
+                    Volver
+                </button>
+            </div>
+        </header>
+
+        <!-- Editores de Código (Solo uno se muestra a la vez) -->
+        <textarea id="editor-html" oninput="markUnsaved(); generateOutline()" class="flex-1 w-full bg-[#1e1e1e] p-6 text-sm font-mono text-[#d4d4d4] outline-none resize-none leading-relaxed focus:ring-1 focus:ring-blue-500" spellcheck="false" placeholder="<!-- Escribe tu HTML aquí -->"></textarea>
+        <textarea id="editor-css" oninput="markUnsaved()" class="hidden flex-1 w-full bg-[#1e1e1e] p-6 text-sm font-mono text-[#d4d4d4] outline-none resize-none leading-relaxed focus:ring-1 focus:ring-blue-500" spellcheck="false" placeholder="/* Escribe tu CSS aquí */"></textarea>
+        <textarea id="editor-js" oninput="markUnsaved()" class="hidden flex-1 w-full bg-[#1e1e1e] p-6 text-sm font-mono text-[#d4d4d4] outline-none resize-none leading-relaxed focus:ring-1 focus:ring-blue-500" spellcheck="false" placeholder="// Escribe tu JavaScript aquí"></textarea>
+    </main>
+
+    <!-- MODAL DE VISUALIZACIÓN -->
+    <div id="previewModal" class="hidden fixed inset-0 bg-black bg-opacity-95 z-50 flex flex-col backdrop-blur-sm">
+        <div class="p-3 bg-gray-900 flex justify-between items-center border-b border-gray-700">
+            <h3 id="previewTitle" class="text-white font-bold ml-4">Ejecutando Proyecto...</h3>
+            <button onclick="closePreview()" class="bg-red-600 hover:bg-red-700 text-white px-6 py-1.5 rounded font-bold transition">Cerrar Visualización</button>
+        </div>
+        <iframe id="previewFrame" class="flex-1 w-full bg-white"></iframe>
+    </div>
+
+    <!-- LÓGICA DEL TALLER -->
+    <script>
+        let projectId = null;
+        let isSidebarOpen = true;
+
+        // 1. Extraer el ID de la URL al cargar la página (ej. taller.html?id=123)
+        window.onload = async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            projectId = urlParams.get('id');
+            
+            if (!projectId) {
+                alert("No se encontró ningún proyecto. Volviendo al Hub.");
+                window.location.href = 'index.html';
+                return;
+            }
+
+            // 2. Cargar los datos del proyecto desde Firebase
+            try {
+                const doc = await db.collection("projects").doc(projectId).get();
+                if (doc.exists) {
+                    const p = doc.data();
+                    document.title = `Taller - ${p.title}`;
+                    document.getElementById('previewTitle').textContent = `Ejecutando: ${p.title}`;
+                    
+                    document.getElementById('editor-html').value = p.html || '';
+                    document.getElementById('editor-css').value = p.css || '';
+                    document.getElementById('editor-js').value = p.js || '';
+                    
+                    generateOutline(); // Generar el esquema inicial
+                } else {
+                    alert("El proyecto no existe.");
+                    window.location.href = 'index.html';
+                }
+            } catch (error) {
+                console.error("Error cargando proyecto:", error);
+            }
+        };
+
+        // 3. Sistema de Pestañas (Cambiar entre HTML, CSS y JS)
+        function switchTab(tabName) {
+            // Ocultar todos los editores
+            ['html', 'css', 'js'].forEach(t => document.getElementById(`editor-${t}`).classList.add('hidden'));
+            // Mostrar el seleccionado
+            document.getElementById(`editor-${tabName}`).classList.remove('hidden');
+            
+            // Actualizar diseño visual en la barra lateral
+            ['html', 'css', 'js'].forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                btn.classList.remove('bg-[#37373d]', 'border-blue-500');
+                btn.classList.add('hover:bg-[#2a2d2e]', 'border-transparent');
+            });
+            const activeBtn = document.getElementById(`tab-${tabName}`);
+            activeBtn.classList.remove('hover:bg-[#2a2d2e]', 'border-transparent');
+            activeBtn.classList.add('bg-[#37373d]', 'border-blue-500');
+
+            // Actualizar el título en la barra superior
+            const fileNames = { 'html': 'index.html', 'css': 'style.css', 'js': 'script.js' };
+            document.getElementById('currentFileTitle').textContent = fileNames[tabName];
+        }
+
+        // 4. Guardar Proyecto en la Nube
+        function markUnsaved() {
+            document.getElementById('saveStatus').textContent = "● Cambios sin guardar";
+            document.getElementById('saveStatus').classList.replace('text-green-500', 'text-gray-400');
+        }
+
+        async function saveProjectData() {
+            document.getElementById('saveStatus').textContent = "Guardando...";
+            const html = document.getElementById('editor-html').value;
+            const css = document.getElementById('editor-css').value;
+            const js = document.getElementById('editor-js').value;
+
+            try {
+                await db.collection("projects").doc(projectId).update({
+                    html: html,
+                    css: css,
+                    js: js,
+                    lastUpdated: new Date().getTime()
+                });
+                document.getElementById('saveStatus').textContent = "✔ Guardado";
+                document.getElementById('saveStatus').classList.replace('text-gray-400', 'text-green-500');
+            } catch (error) {
+                console.error("Error guardando:", error);
+                alert("Error al guardar.");
+            }
+        }
+
+        // 5. Visualización (El Modal con el iFrame)
+        function runPreview() {
+            const html = document.getElementById('editor-html').value;
+            const css = `<style>${document.getElementById('editor-css').value}</style>`;
+            const js = `<script>${document.getElementById('editor-js').value}<\/script>`;
+            
+            const iframe = document.getElementById('previewFrame');
+            iframe.srcdoc = html + css + js;
+            
+            document.getElementById('previewModal').classList.remove('hidden');
+        }
+
+        function closePreview() {
+            document.getElementById('previewModal').classList.add('hidden');
+            document.getElementById('previewFrame').srcdoc = ""; // Limpiar memoria
+        }
+
+        // 6. Aplastar Barra Lateral (Toggle)
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const expandBtn = document.getElementById('btnExpandSidebar');
+            
+            isSidebarOpen = !isSidebarOpen;
+            if (isSidebarOpen) {
+                sidebar.classList.remove('hidden');
+                expandBtn.classList.add('hidden');
+            } else {
+                sidebar.classList.add('hidden');
+                expandBtn.classList.remove('hidden');
+            }
+        }
+
+        // 7. Outline (Generador de Esquema mágico)
+        function generateOutline() {
+            const htmlStr = document.getElementById('editor-html').value;
+            const outlineBox = document.getElementById('outlineBox');
+            outlineBox.innerHTML = ''; // Limpiar anterior
+
+            // Usamos el analizador nativo del navegador para leer el HTML
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlStr, 'text/html');
+
+            function traverse(node, indent) {
+                if (node.nodeType === 1) { // 1 = Elemento HTML (div, h1, button...)
+                    const el = document.createElement('div');
+                    el.style.paddingLeft = (indent * 12) + 'px';
+                    el.className = "hover:bg-[#2a2d2e] cursor-default py-0.5";
+                    
+                    let name = node.tagName.toLowerCase();
+                    if (node.id) name += `<span class="text-orange-400">#${node.id}</span>`;
+                    if (node.className && typeof node.className === 'string') {
+                        name += `<span class="text-gray-500">.${node.className.split(' ')[0]}</span>`;
+                    }
+                    
+                    el.innerHTML = `⬡ ${name}`;
+                    outlineBox.appendChild(el);
+                    
+                    // Leer los hijos de este elemento
+                    for (let i = 0; i < node.children.length; i++) traverse(node.children[i], indent + 1);
+                }
+            }
+            
+            // Empezar a leer desde el "body" del código escrito
+            if(doc.body && doc.body.children.length > 0) {
+                for(let i = 0; i < doc.body.children.length; i++) {
+                    traverse(doc.body.children[i], 0);
+                }
+            } else {
+                outlineBox.innerHTML = '<span class="text-gray-600 italic">No hay etiquetas en el body</span>';
+            }
+        }
+    </script>
+</body>
+</html>
