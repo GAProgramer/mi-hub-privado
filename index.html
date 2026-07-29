@@ -107,20 +107,22 @@
         </div>
     </div>
 
-    <!-- Modal Nuevo Proyecto -->
+    <!-- Modal Nuevo Proyecto (Modificado) -->
     <div id="newProjectModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-40">
-        <div class="bg-gray-800 p-8 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
+        <div class="bg-gray-800 p-8 rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
             <h2 class="text-2xl font-bold mb-6">Crear Nuevo Proyecto</h2>
-            <input type="text" id="projTitle" placeholder="Título del Proyecto" class="w-full bg-gray-900 border border-gray-700 px-4 py-2 rounded mb-4">
-            <div class="grid grid-cols-2 gap-4 mb-4">
-                <div><label class="text-sm text-gray-400">HTML</label><textarea id="projHTML" rows="6" class="w-full bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm"></textarea></div>
-                <div><label class="text-sm text-gray-400">JavaScript</label><textarea id="projJS" rows="6" class="w-full bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm"></textarea></div>
-                <div class="col-span-2"><label class="text-sm text-gray-400">CSS</label><textarea id="projCSS" rows="4" class="w-full bg-gray-900 border border-gray-700 p-2 rounded font-mono text-sm"></textarea></div>
-            </div>
+            
+            <label class="block text-sm text-gray-400 mb-1">Nombre del Proyecto</label>
+            <input type="text" id="projTitle" placeholder="Ej. Calculadora, Pizarra..." class="w-full bg-gray-900 border border-gray-700 px-4 py-2 rounded mb-4">
+            
+            <label class="block text-sm text-gray-400 mb-1">Descripción (Opcional)</label>
+            <textarea id="projDesc" rows="3" placeholder="¿De qué trata este proyecto?" class="w-full bg-gray-900 border border-gray-700 p-2 rounded mb-4"></textarea>
+            
             <label class="flex items-center space-x-2 mb-6 cursor-pointer">
                 <input type="checkbox" id="projPublic" class="w-5 h-5 accent-orange-600">
                 <span>Hacer público (Visible para toda la familia/amigos aprobados)</span>
             </label>
+            
             <div class="flex justify-end space-x-4">
                 <button onclick="closeNewProjectModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded">Cancelar</button>
                 <button onclick="saveProject()" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded font-bold">Guardar Proyecto</button>
@@ -334,11 +336,21 @@
                     if(!p.isPublic && p.owner !== currentUser.username && currentUser.role !== 'admin') return;
                     
                     const card = document.createElement('div');
-                    card.className = "bg-gray-800 p-6 rounded-lg border border-gray-700 flex flex-col";
+                    card.className = "bg-gray-800 p-6 rounded-lg border border-gray-700 flex flex-col h-64 overflow-hidden";
                     card.innerHTML = `
-                        <h3 class="text-xl font-bold text-white mb-2">${p.title}</h3>
-                        <p class="text-xs text-gray-400 mb-4">Autor: ${p.owner} | ${p.isPublic ? '🌐 Público' : '🔒 Privado'}</p>
-                        <button onclick="runProject('${p.html.replace(/'/g, "\\'")}', '${p.css.replace(/'/g, "\\'")}', '${p.js.replace(/'/g, "\\'")}', '${p.title}')" class="mt-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded">▶ Ejecutar Código</button>
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="text-xl font-bold text-white truncate w-3/4" title="${p.title}">${p.title}</h3>
+                            <span class="text-xs px-2 py-1 rounded bg-gray-700">${p.isPublic ? '🌐' : '🔒'}</span>
+                        </div>
+                        <p class="text-xs text-orange-400 mb-2 font-mono">Por: ${p.owner}</p>
+                        
+                        <!-- Descripción con límite de líneas (line-clamp) -->
+                        <p class="text-sm text-gray-300 mb-4 line-clamp-3">${p.description || 'Sin descripción.'}</p>
+                        
+                        <!-- Botón modificado para el Taller -->
+                        <button onclick="openWorkspace('${id}', '${p.title.replace(/'/g, "\\'")}')" class="mt-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition">
+                            🛠️ Abrir en el Taller
+                        </button>
                     `;
                     grid.appendChild(card);
                 });
@@ -364,21 +376,43 @@
         function openNewProjectModal() { document.getElementById('newProjectModal').classList.remove('hidden'); }
         function closeNewProjectModal() { document.getElementById('newProjectModal').classList.add('hidden'); }
 
+        function openNewProjectModal() { 
+            document.getElementById('projTitle').value = '';
+            document.getElementById('projDesc').value = '';
+            document.getElementById('projPublic').checked = false;
+            document.getElementById('newProjectModal').classList.remove('hidden'); 
+        }
+
+        function closeNewProjectModal() { 
+            document.getElementById('newProjectModal').classList.add('hidden'); 
+        }
+
         async function saveProject() {
-            const title = document.getElementById('projTitle').value;
-            const html = document.getElementById('projHTML').value;
-            const css = document.getElementById('projCSS').value;
-            const js = document.getElementById('projJS').value;
+            const title = document.getElementById('projTitle').value.trim();
+            const desc = document.getElementById('projDesc').value.trim();
             const isPublic = document.getElementById('projPublic').checked;
 
-            if(!title) return alert("Se requiere un título");
+            if(!title) return alert("Se requiere un título para el proyecto.");
 
+            // Al crear, inyectamos un código "Hola Mundo" por defecto
             await db.collection("projects").add({
-                title, html, css, js, isPublic, owner: currentUser.username, timestamp: new Date().getTime()
+                title: title, 
+                description: desc,
+                html: "<h1>Hola Mundo</h1>\n<p>Este es mi nuevo proyecto.</p>", 
+                css: "body {\n  background-color: #1a202c;\n  color: white;\n  text-align: center;\n  padding-top: 50px;\n}", 
+                js: "console.log('Proyecto iniciado');", 
+                isPublic: isPublic, 
+                owner: currentUser.username, 
+                timestamp: new Date().getTime()
             });
             
             logActivity(`📦 '${currentUser.username}' creó el proyecto '${title}'.`);
             closeNewProjectModal();
+        }
+
+        function openWorkspace(id, title) {
+            // Este es el aviso temporal. En el próximo paso construiremos la pantalla aquí.
+            alert("Has seleccionado el proyecto: " + title + "\n\nEn nuestro siguiente paso, este botón ocultará el muro principal y abrirá la pantalla dividida del 'Taller' (IDE) para editar el código de este proyecto.");
         }
 
         function runProject(html, css, js, title) {
