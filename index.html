@@ -47,14 +47,28 @@
     <!-- Área Principal -->
     <main class="flex-1 p-8 overflow-y-auto relative">
         
-        <!-- Pantalla de Login -->
-        <div id="loginScreen" class="max-w-md mx-auto mt-20 bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700">
-            <h1 class="text-3xl font-bold text-center text-white mb-6">Acceso al Hub</h1>
-            <input type="text" id="username" placeholder="Nombre de Usuario" class="w-full bg-gray-900 border border-gray-700 text-white px-4 py-2 rounded mb-4 focus:outline-none focus:border-orange-500">
-            <input type="password" id="password" placeholder="Contraseña" class="w-full bg-gray-900 border border-gray-700 text-white px-4 py-2 rounded mb-6 focus:outline-none focus:border-orange-500">
-            <button onclick="login()" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded mb-4">Ingresar</button>
-            <button onclick="requestAccess()" class="w-full bg-transparent border border-gray-600 hover:bg-gray-700 text-gray-300 font-bold py-2 px-4 rounded">Solicitar Acceso (Nuevos)</button>
-            <p id="loginMessage" class="text-center mt-4 text-sm"></p>
+        <!-- Pantalla de Login y Comunidad Pública -->
+        <div id="loginScreen" class="max-w-4xl mx-auto mt-20 flex flex-col md:flex-row gap-8 items-start justify-center">
+            
+            <!-- Caja de Login Original -->
+            <div class="bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700 w-full md:w-96">
+                <h1 class="text-3xl font-bold text-center text-white mb-6">Acceso al Hub</h1>
+                <input type="text" id="username" placeholder="Nombre de Usuario" class="w-full bg-gray-900 border border-gray-700 text-white px-4 py-2 rounded mb-4 focus:outline-none focus:border-orange-500">
+                <input type="password" id="password" placeholder="Contraseña" class="w-full bg-gray-900 border border-gray-700 text-white px-4 py-2 rounded mb-6 focus:outline-none focus:border-orange-500">
+                <button onclick="login()" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded mb-4">Ingresar</button>
+                <button onclick="requestAccess()" class="w-full bg-transparent border border-gray-600 hover:bg-gray-700 text-gray-300 font-bold py-2 px-4 rounded">Solicitar Acceso (Nuevos)</button>
+                <p id="loginMessage" class="text-center mt-4 text-sm"></p>
+            </div>
+
+            <!-- Caja de Comunidad (Nueva) -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-xl border border-gray-700 w-full md:w-80 flex flex-col h-[400px]">
+                <h2 class="text-xl font-bold text-orange-500 mb-2 text-center">🌐 Miembros del Hub</h2>
+                <p class="text-xs text-gray-400 mb-4 text-center">Nuestra comunidad activa</p>
+                <ul id="publicCommunityList" class="space-y-2 overflow-y-auto flex-1 pr-2">
+                    <!-- Se llena automáticamente con JavaScript -->
+                </ul>
+            </div>
+            
         </div>
 
         <!-- Pestaña Proyectos -->
@@ -412,26 +426,7 @@
                 });
             });
 
-            // 2. Escuchar Usuarios (Para la lista lateral y el autocompletado)
-            window.communityUsers = [];
-            db.collection("users").where("status", "==", "approved").onSnapshot(snapshot => {
-                const list = document.getElementById('communityUserList');
-                if(list) list.innerHTML = '';
-                window.communityUsers = [];
-                
-                snapshot.forEach(doc => {
-                    const u = doc.data();
-                    window.communityUsers.push(u.username);
-                    if(list) {
-                        list.innerHTML += `<li class="text-sm p-2 bg-gray-900 rounded border border-gray-700 flex justify-between items-center shadow-sm">
-                            <span class="${u.role==='admin' ? 'text-red-500 font-bold' : 'text-gray-200'}">@${u.username}</span> 
-                            <span class="text-[10px] uppercase text-gray-500 tracking-wider">${u.role}</span>
-                        </li>`;
-                    }
-                });
-            });
-
-            // 3. Escuchar Chat
+            // 2. Escuchar Chat
             unsubscribeChat = db.collection("chat").orderBy("timestamp", "asc").onSnapshot(snapshot => {
                 const box = document.getElementById('chatBox');
                 box.innerHTML = '';
@@ -702,6 +697,47 @@
                 loadUsers();
             }
         }
+
+        // --- MOTOR DE COMUNIDAD GLOBAL ---
+        // Se ejecuta desde que alguien entra a la página (antes de iniciar sesión)
+        function loadCommunityData() {
+            // Escuchamos a los usuarios aprobados en Firebase
+            db.collection("users").where("status", "==", "approved").onSnapshot(snapshot => {
+                const publicList = document.getElementById('publicCommunityList'); // Lista de la pantalla de inicio
+                const chatList = document.getElementById('communityUserList');     // Lista de la pestaña de chat
+                
+                // 1. Inyectamos a GAAdmin obligatoriamente en la cima
+                let htmlContent = `
+                    <li class="text-sm p-2 bg-gray-900 rounded border border-red-700 flex justify-between items-center shadow-sm">
+                        <span class="text-red-500 font-bold">@GAAdmin</span> 
+                        <span class="text-[10px] uppercase text-red-500 tracking-wider font-bold">👑 Creador</span>
+                    </li>`;
+                
+                // Reiniciamos la lista de autocompletado incluyendo al creador
+                window.communityUsers = ['GAAdmin'];
+
+                // 2. Agregamos al resto de los mortales
+                snapshot.forEach(doc => {
+                    const u = doc.data();
+                    if(u.username === 'GAAdmin') return; // Evitar duplicados por si acaso
+                    
+                    window.communityUsers.push(u.username);
+                    htmlContent += `
+                        <li class="text-sm p-2 bg-gray-900 rounded border border-gray-700 flex justify-between items-center shadow-sm">
+                            <span class="${u.role === 'admin' ? 'text-red-500 font-bold' : (u.role === 'coadmin' ? 'text-blue-400 font-bold' : 'text-gray-200')}">@${u.username}</span> 
+                            <span class="text-[10px] uppercase text-gray-500 tracking-wider">${u.role}</span>
+                        </li>`;
+                });
+
+                // 3. Pintamos las listas donde corresponda
+                if(publicList) publicList.innerHTML = htmlContent;
+                if(chatList) chatList.innerHTML = htmlContent;
+            });
+        }
+        
+        // ¡Arrancamos la función inmediatamente al cargar la página!
+        loadCommunityData();
+
     </script>
 </body>
 </html>
