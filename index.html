@@ -145,7 +145,30 @@
         </div>
     </div>
 
-    <!-- Modal Nuevo Proyecto (Modificado) -->
+    <!-- Modal Nuevo Proyecto -->
+    <div id="newProjectModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-40">
+        <div class="bg-gray-800 p-8 rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
+            <h2 class="text-2xl font-bold mb-6">Crear Nuevo Proyecto</h2>
+            
+            <label class="block text-sm text-gray-400 mb-1">Nombre del Proyecto</label>
+            <input type="text" id="projTitle" placeholder="Ej. Calculadora, Pizarra..." class="w-full bg-gray-900 border border-gray-700 px-4 py-2 rounded mb-4 focus:outline-none focus:border-orange-500">
+            
+            <label class="block text-sm text-gray-400 mb-1">Descripción (Opcional)</label>
+            <textarea id="projDesc" rows="3" placeholder="¿De qué trata este proyecto?" class="w-full bg-gray-900 border border-gray-700 p-2 rounded mb-4 focus:outline-none focus:border-orange-500"></textarea>
+            
+            <label class="flex items-center space-x-2 mb-6 cursor-pointer">
+                <input type="checkbox" id="projPublic" class="w-5 h-5 accent-orange-600">
+                <span class="text-gray-300">Hacer público (Visible para toda la familia/amigos aprobados)</span>
+            </label>
+            
+            <div class="flex justify-end space-x-4">
+                <button onclick="closeNewProjectModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded font-bold transition">Cancelar</button>
+                <button onclick="saveProject()" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded font-bold transition">Guardar Proyecto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Proyecto -->
     <div id="editProjectModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-40">
         <div class="bg-gray-800 p-8 rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
             <h2 class="text-2xl font-bold mb-6 text-yellow-500">Editar Proyecto</h2>
@@ -167,15 +190,6 @@
                 <button onclick="saveProjectEdits()" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-white font-bold transition">Guardar Cambios</button>
             </div>
         </div>
-    </div>
-
-    <!-- Modal Sandbox -->
-    <div id="sandboxModal" class="fixed inset-0 bg-black bg-opacity-90 hidden flex flex-col z-50">
-        <div class="p-4 bg-gray-800 flex justify-between items-center">
-            <h3 id="sandboxTitle" class="font-bold text-lg">Ejecutando Proyecto</h3>
-            <button onclick="closeSandbox()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-bold">Cerrar Entorno</button>
-        </div>
-        <iframe id="sandboxFrame" sandbox="allow-scripts" class="flex-1 w-full bg-white"></iframe>
     </div>
 
     <script>
@@ -452,7 +466,9 @@
             });
         }
 
-       // PROYECTOS Y TALLER (IDE)
+       // --- LÓGICA DE PROYECTOS (CREAR Y EDITAR) ---
+
+        // 1. Crear Nuevos Proyectos
         function openNewProjectModal() { 
             document.getElementById('projTitle').value = '';
             document.getElementById('projDesc').value = '';
@@ -471,24 +487,29 @@
 
             if(!title) return alert("Se requiere un título para el proyecto.");
 
-            await db.collection("projects").add({
-                title: title, 
-                description: desc,
-                html: "<h1>Hola Mundo</h1>\n<p>Este es mi nuevo proyecto.</p>", 
-                css: "body {\n  background-color: #1a202c;\n  color: white;\n  text-align: center;\n  padding-top: 50px;\n}", 
-                js: "console.log('Proyecto iniciado');", 
-                isPublic: isPublic, 
-                owner: currentUser.username, 
-                timestamp: new Date().getTime()
-            });
-            
-            logActivity(`📦 '${currentUser.username}' creó el proyecto '${title}'.`);
-            closeNewProjectModal();
+            try {
+                await db.collection("projects").add({
+                    title: title, 
+                    description: desc,
+                    html: "<h1>Hola Mundo</h1>\n<p>Este es mi nuevo proyecto.</p>", 
+                    css: "body {\n  background-color: #1a202c;\n  color: white;\n  text-align: center;\n  padding-top: 50px;\n}", 
+                    js: "console.log('Proyecto iniciado');", 
+                    isPublic: isPublic, 
+                    owner: currentUser.username, 
+                    timestamp: new Date().getTime()
+                });
+                
+                logActivity(`📦 '${currentUser.username}' creó el proyecto '${title}'.`);
+                closeNewProjectModal();
+            } catch (error) {
+                console.error("Error creando el proyecto:", error);
+                alert("Hubo un error al guardar. Revisa tu conexión a Firebase.");
+            }
         }
 
+        // 2. Editar Proyectos Existentes
         async function openEditProjectModal(id) {
             try {
-                // Descarga los datos frescos de Firebase
                 const doc = await db.collection("projects").doc(id).get();
                 if (doc.exists) {
                     const p = doc.data();
@@ -531,6 +552,7 @@
             }
         }
 
+        // 3. Borrar Proyectos
         async function deleteProject(id) {
             if (confirm("⚠️ ¿Estás seguro de que quieres borrar este proyecto para siempre?")) {
                 try {
