@@ -146,24 +146,25 @@
     </div>
 
     <!-- Modal Nuevo Proyecto (Modificado) -->
-    <div id="newProjectModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-40">
+    <div id="editProjectModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-40">
         <div class="bg-gray-800 p-8 rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
-            <h2 class="text-2xl font-bold mb-6">Crear Nuevo Proyecto</h2>
+            <h2 class="text-2xl font-bold mb-6 text-yellow-500">Editar Proyecto</h2>
+            <input type="hidden" id="editProjId">
             
             <label class="block text-sm text-gray-400 mb-1">Nombre del Proyecto</label>
-            <input type="text" id="projTitle" placeholder="Ej. Calculadora, Pizarra..." class="w-full bg-gray-900 border border-gray-700 px-4 py-2 rounded mb-4">
+            <input type="text" id="editProjTitle" class="w-full bg-gray-900 border border-gray-700 px-4 py-2 rounded mb-4 focus:outline-none focus:border-yellow-500 text-white">
             
-            <label class="block text-sm text-gray-400 mb-1">Descripción (Opcional)</label>
-            <textarea id="projDesc" rows="3" placeholder="¿De qué trata este proyecto?" class="w-full bg-gray-900 border border-gray-700 p-2 rounded mb-4"></textarea>
+            <label class="block text-sm text-gray-400 mb-1">Descripción</label>
+            <textarea id="editProjDesc" rows="3" class="w-full bg-gray-900 border border-gray-700 p-2 rounded mb-4 focus:outline-none focus:border-yellow-500 text-white"></textarea>
             
             <label class="flex items-center space-x-2 mb-6 cursor-pointer">
-                <input type="checkbox" id="projPublic" class="w-5 h-5 accent-orange-600">
-                <span>Hacer público (Visible para toda la familia/amigos aprobados)</span>
+                <input type="checkbox" id="editProjPublic" class="w-5 h-5 accent-yellow-600">
+                <span class="text-gray-300">Hacer público (Visible para toda la familia/amigos aprobados)</span>
             </label>
             
             <div class="flex justify-end space-x-4">
-                <button onclick="closeNewProjectModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded">Cancelar</button>
-                <button onclick="saveProject()" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded font-bold">Guardar Proyecto</button>
+                <button onclick="closeEditProjectModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-bold transition">Cancelar</button>
+                <button onclick="saveProjectEdits()" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-white font-bold transition">Guardar Cambios</button>
             </div>
         </div>
     </div>
@@ -385,10 +386,12 @@
                         <p class="text-xs text-orange-400 mb-2 font-mono">Por: ${p.owner}</p>
                         <p class="text-sm text-gray-300 mb-4 line-clamp-3">${p.description || 'Sin descripción.'}</p>
                         <div class="mt-auto flex flex-col gap-2">
-                            <button onclick="window.location.href='taller.html?id=${id}'" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition">
-                                🛠️ Abrir en el Taller
-                            </button>
-                            ${(isOwner || isAdmin) ? `<button onclick="deleteProject('${id}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 rounded transition text-sm">🗑️ Borrar Proyecto</button>` : ''}
+                            <button onclick="window.location.href='taller.html?id=${id}'" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition">🛠️ Abrir en el Taller</button>
+                            ${(isOwner || isAdmin) ? `
+                            <div class="flex gap-2">
+                                <button onclick="openEditProjectModal('${id}')" class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 rounded transition text-sm">✏️ Editar</button>
+                                <button onclick="deleteProject('${id}')" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-1 rounded transition text-sm">🗑️ Borrar</button>
+                            </div>` : ''}
                         </div>
                     `;
                     grid.appendChild(card);
@@ -481,6 +484,51 @@
             
             logActivity(`📦 '${currentUser.username}' creó el proyecto '${title}'.`);
             closeNewProjectModal();
+        }
+
+        async function openEditProjectModal(id) {
+            try {
+                // Descarga los datos frescos de Firebase
+                const doc = await db.collection("projects").doc(id).get();
+                if (doc.exists) {
+                    const p = doc.data();
+                    document.getElementById('editProjId').value = id;
+                    document.getElementById('editProjTitle').value = p.title;
+                    document.getElementById('editProjDesc').value = p.description || '';
+                    document.getElementById('editProjPublic').checked = p.isPublic;
+                    
+                    document.getElementById('editProjectModal').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error("Error al cargar datos para edición:", error);
+            }
+        }
+
+        function closeEditProjectModal() {
+            document.getElementById('editProjectModal').classList.add('hidden');
+        }
+
+        async function saveProjectEdits() {
+            const id = document.getElementById('editProjId').value;
+            const title = document.getElementById('editProjTitle').value.trim();
+            const desc = document.getElementById('editProjDesc').value.trim();
+            const isPublic = document.getElementById('editProjPublic').checked;
+
+            if(!title) return alert("Se requiere un título para el proyecto.");
+
+            try {
+                await db.collection("projects").doc(id).update({
+                    title: title,
+                    description: desc,
+                    isPublic: isPublic
+                });
+                
+                logActivity(`✏️ '${currentUser.username}' editó el proyecto '${title}'.`);
+                closeEditProjectModal();
+            } catch (error) {
+                console.error("Error al guardar la edición:", error);
+                alert("Hubo un problema al guardar los cambios.");
+            }
         }
 
         async function deleteProject(id) {
