@@ -66,18 +66,21 @@ function renderAuthView(container) {
                 <h2 style="margin-bottom: 20px; color: var(--blue-accent);">Acceso al Hub</h2>
                 <form id="auth-form" style="display: flex; flex-direction: column; gap: 15px;">
                     <input id="username" type="text" placeholder="Usuario" required style="padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
-                    <input id="password" type="password" placeholder="Contraseña" required style="padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
+                    <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password" required style="padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
                     <button type="submit" class="btn-primary" style="justify-content: center;">Ingresar / Registrarse</button>
                 </form>
+                <p id="auth-msg" style="margin-top: 15px; font-size: 0.85rem; color: var(--text-muted);"></p>
             </div>
         </div>
     `;
 
-    document.getElementById('auth-form').addEventListener('submit', (e) => {
+    document.getElementById('auth-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const user = document.getElementById('username').value.trim();
         const pass = document.getElementById('password').value.trim();
+        const msg = document.getElementById('auth-msg');
 
+        // 1. Acceso del Admin Supremo
         if(user === 'GAAdmin' && pass === '9GAO282517219') {
             currentUser = {uid: 'admin_id_000', username: 'GAAdmin', role: 'admin'};
             localStorage.setItem('session', JSON.stringify(currentUser));
@@ -85,24 +88,50 @@ function renderAuthView(container) {
             return;
         }
 
-        let users = getLocal('users');
-        let existing = users.find(u => u.username === user);
+        try {
+            // 2. Consultar directamente en Firebase Firestore
+            const snapshot = await db.collection("users").where("username", "==", user).get();
 
-        if(existing) {
-            if(existing.password === pass) {
-                currentUser = {uid: existing.uid, username: existing.username, role: existing.role};
-                localStorage.setItem('session', JSON.stringify(currentUser));
-                fetchUserRoleAndRender();
+            if (!snapshot.empty) {
+                // EL USUARIO SÍ EXISTE EN FIREBASE
+                const userDoc = snapshot.docs[0];
+                const userDataFields = userDoc.data();
+
+                if (userDataFields.password === pass) {
+                    if (userDataFields.status === 'pending') {
+                        msg.textContent = "Tu cuenta está pendiente de aprobación por el Admin.";
+                        msg.style.color = "#facc15";
+                        return;
+                    }
+                    currentUser = { uid: userDoc.id, username: userDataFields.username, role: userDataFields.role };
+                    localStorage.setItem('session', JSON.stringify(currentUser));
+                    fetchUserRoleAndRender();
+                } else {
+                    msg.textContent = "Contraseña incorrecta.";
+                    msg.style.color = "#ef4444";
+                }
             } else {
-                alert("Contraseña incorrecta.");
+                // EL USUARIO NO EXISTE EN LA NUBE -> CREARLO AUTOMÁTICAMENTE
+                const newUserRef = await db.collection("users").add({
+                    username: user,
+                    password: pass,
+                    role: 'user',
+                    status: 'pending',
+                    termsAccepted: true,
+                    coAdminTermsAccepted: false
+                });
+
+                msg.textContent = "Usuario no encontrado. Solicitud enviada al Admin.";
+                msg.style.color = "#4ade80";
+                
+                if(typeof logActivity === 'function') {
+                    logActivity(`🔔 NUEVA SOLICITUD: '${user}' quiere unirse al Hub.`);
+                }
             }
-        } else {
-            const newUser = { uid: 'u_' + Date.now(), username: user, password: pass, role: 'pending' };
-            users.push(newUser);
-            setLocal('users', users);
-            currentUser = {uid: newUser.uid, username: newUser.username, role: 'pending'};
-            localStorage.setItem('session', JSON.stringify(currentUser));
-            fetchUserRoleAndRender();
+        } catch (error) {
+            console.error("Error en autenticación:", error);
+            msg.textContent = "Error al conectar con la base de datos.";
+            msg.style.color = "#ef4444";
         }
     });
 }
