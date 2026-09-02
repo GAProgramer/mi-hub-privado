@@ -219,6 +219,75 @@ function renderDashboardView(container) {
     loadProjectsView();
 }
 
+// ==========================================
+// SECCIÓN: PROYECTOS (REPOSITORIO)
+// ==========================================
+function loadProjectsView() {
+    const content = document.getElementById('dashboard-content');
+    if(!content) return;
+
+    content.innerHTML = `
+        <div class="header-section">
+            <h2>Repositorio</h2>
+            <button onclick="document.getElementById('project-modal').style.display='flex'" class="btn-primary"><i class="fas fa-plus"></i> Nuevo Proyecto</button>
+        </div>
+        <div id="projects-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;"></div>
+    `;
+
+    // Escuchar los proyectos de Firebase en tiempo real
+    db.collection("projects").orderBy("createdAt", "desc").onSnapshot(snapshot => {
+        const grid = document.getElementById('projects-grid');
+        if(!grid) return; // Evita errores si cambias de pestaña muy rápido
+        
+        grid.innerHTML = '';
+
+        if (snapshot.empty) {
+            grid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">No hay proyectos.</div>';
+            return;
+        }
+
+        snapshot.forEach(doc => {
+            const p = doc.data();
+            const id = doc.id;
+
+            // Filtro de privacidad
+            if (!p.isPublic && p.ownerId !== currentUser.uid && userRole !== 'admin') return;
+
+            grid.innerHTML += `
+                <div class="table-container" style="padding: 20px; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <h3 style="color: white; margin-bottom: 10px;">${p.title}</h3>
+                        ${p.isPublic ? '<i class="fas fa-globe text-blue-400"></i>' : '<i class="fas fa-lock" style="color: #facc15;"></i>'}
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; flex-grow: 1; margin-bottom: 20px;">${p.description}</p>
+                    
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="window.location.href='taller.html?id=${id}'" class="btn-primary" style="flex-grow: 1; justify-content: center;">
+                            <i class="fas fa-code"></i> Abrir Taller
+                        </button>
+                        
+                        ${(p.ownerId === currentUser.uid || userRole === 'admin') ? 
+                            `<button onclick="deleteProject('${id}')" class="action-btn btn-salir" style="margin: 0; padding: 10px;"><i class="fas fa-trash"></i></button>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+    });
+}
+
+// Función global para borrar proyectos en Firebase
+window.deleteProject = async (id) => {
+    if(confirm("⚠️ ¿Estás seguro de que quieres eliminar este proyecto?")) {
+        try {
+            await db.collection("projects").doc(id).delete();
+            if(typeof logActivity === 'function') logActivity(`🗑️ Proyecto eliminado.`);
+        } catch (error) {
+            console.error("Error al borrar:", error);
+            alert("No se pudo borrar el proyecto.");
+        }
+    }
+}
+
 // Función de ayuda para iluminar el botón activo en el menú
 function setActiveNav(id) {
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
