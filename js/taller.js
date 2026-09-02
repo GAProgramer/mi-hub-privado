@@ -8,7 +8,7 @@ window.onload = async () => {
     
     if (!projectId) {
         alert("No se encontró ningún proyecto. Volviendo al Hub.");
-        window.location.href = 'ProyectHub.html'; // Corregido
+        window.location.href = 'index.html';
         return;
     }
 
@@ -27,7 +27,7 @@ window.onload = async () => {
             generateOutline(); 
         } else {
             alert("El proyecto no existe.");
-            window.location.href = 'ProyectHub.html'; // Corregido
+            window.location.href = 'index.html';
         }
     } catch (error) {
         console.error("Error cargando proyecto:", error);
