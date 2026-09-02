@@ -131,6 +131,7 @@ function renderAuthView(container) {
         }
     });
 }
+
 function renderPendingView(container) {
     container.innerHTML = `
         <div style="display:flex; justify-content:center; align-items:center; height:100vh;">
