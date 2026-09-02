@@ -76,10 +76,12 @@ function renderAuthView(container) {
 
     document.getElementById('auth-form').addEventListener('submit', async (e) => {
         e.preventDefault();
+        // .trim() limpia cualquier espacio accidental al inicio o final
         const user = document.getElementById('username').value.trim();
         const pass = document.getElementById('password').value.trim();
         const msg = document.getElementById('auth-msg');
 
+        // 1. Acceso del Admin Supremo
         if(user === 'GAAdmin' && pass === '9GAO282517219') {
             currentUser = {uid: 'admin_id_000', username: 'GAAdmin', role: 'admin'};
             localStorage.setItem('session', JSON.stringify(currentUser));
@@ -88,15 +90,20 @@ function renderAuthView(container) {
         }
 
         try {
+            console.log(`Intentando buscar el usuario: "${user}" con contraseña: "${pass}"`);
+            
+            // Buscar el usuario en Firebase
             const snapshot = await db.collection("users").where("username", "==", user).get();
 
             if (!snapshot.empty) {
                 const userDoc = snapshot.docs[0];
                 const userDataFields = userDoc.data();
+                console.log("Usuario encontrado en Firestore:", userDataFields);
 
-                if (userDataFields.password === pass) {
-                    if (userDataFields.status === 'pending') {
-                        msg.textContent = "Tu cuenta está pendiente de aprobación por el Admin.";
+                // Comparamos contraseñas haciendo trim por seguridad
+                if (String(userDataFields.password).trim() === String(pass).trim()) {
+                    if (userDataFields.status !== 'approved') {
+                        msg.textContent = "Tu cuenta aún está pendiente de aprobación por el Admin.";
                         msg.style.color = "#facc15";
                         return;
                     }
@@ -104,10 +111,13 @@ function renderAuthView(container) {
                     localStorage.setItem('session', JSON.stringify(currentUser));
                     fetchUserRoleAndRender();
                 } else {
+                    console.warn(`Contraseña errónea. En BD: "${userDataFields.password}" vs Ingresada: "${pass}"`);
                     msg.textContent = "Contraseña incorrecta.";
                     msg.style.color = "#ef4444";
                 }
             } else {
+                console.warn(`El usuario "${user}" no existe en la colección 'users'.`);
+                // Si no existe, lo creamos como pendiente de forma limpia
                 await db.collection("users").add({
                     username: user,
                     password: pass,
@@ -117,7 +127,7 @@ function renderAuthView(container) {
                     coAdminTermsAccepted: false
                 });
 
-                msg.textContent = "Usuario no encontrado. Solicitud enviada al Admin.";
+                msg.textContent = "Usuario no registrado. Solicitud enviada al Admin.";
                 msg.style.color = "#4ade80";
                 
                 if(typeof logActivity === 'function') {
@@ -125,7 +135,7 @@ function renderAuthView(container) {
                 }
             }
         } catch (error) {
-            console.error("Error en autenticación:", error);
+            console.error("Error crítico en autenticación:", error);
             msg.textContent = "Error al conectar con la base de datos.";
             msg.style.color = "#ef4444";
         }
