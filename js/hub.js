@@ -384,10 +384,10 @@ function loadLogsView() {
     });
 }
 
-function loadUsersManagementView() {
-    const users = getLocal('users');
-    
-    // LÓGICA DE PRIVACIDAD: Solo el admin ve la columna de contraseñas
+// ==========================================
+// SECCIÓN: GESTIÓN DE USUARIOS (ADMIN / COADMIN)
+// ==========================================
+async function loadUsersManagementView() {
     const showPassword = userRole === 'admin';
 
     document.getElementById('dashboard-content').innerHTML = `
@@ -400,41 +400,74 @@ function loadUsersManagementView() {
                     <tr>
                         <th>Usuario</th>
                         ${showPassword ? '<th>Contraseña</th>' : ''}
-                        <th>Acciones</th>
-                        <th>Rol</th>
+                        <th>Estado / Rol</th>
+                        <th style="text-align: right;">Acciones</th>
                     </tr>
                 </thead>
-                <tbody>
-                    ${users.map(u => `
-                        <tr>
-                            <td style="color: white; font-weight: 500;">${u.username}</td>
-                            ${showPassword ? `<td style="color: var(--text-muted); font-family: monospace;">${u.password}</td>` : ''}
-                            <td>
-                                ${u.role === 'pending' ? `<button onclick="updateRole('${u.uid}', 'user')" class="action-btn" style="color: #4ade80;">Aprobar</button>` : ''}
-                                ${u.role !== 'pending' ? `<button onclick="deleteUser('${u.uid}')" class="action-btn btn-salir">Eliminar</button>` : ''}
-                            </td>
-                            <td><span style="color: ${u.role === 'pending' ? '#facc15' : '#4ade80'}; text-transform: uppercase; font-size: 0.8rem; font-weight: bold;">${u.role}</span></td>
-                        </tr>
-                    `).join('')}
-                    ${users.length === 0 ? '<tr><td colspan="4" class="empty-state">No hay usuarios.</td></tr>' : ''}
+                <tbody id="usersTableBody">
+                    <tr><td colspan="4" class="empty-state">Cargando usuarios desde Firebase...</td></tr>
                 </tbody>
             </table>
         </div>
     `;
+
+    try {
+        const snapshot = await db.collection("users").get();
+        const tbody = document.getElementById('usersTableBody');
+        tbody.innerHTML = '';
+
+        if (snapshot.empty) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No hay usuarios registrados.</td></tr>';
+            return;
+        }
+
+        snapshot.forEach(doc => {
+            const u = doc.data();
+            const id = doc.id;
+
+            tbody.innerHTML += `
+                <tr>
+                    <td style="color: white; font-weight: 500;">${u.username}</td>
+                    ${showPassword ? `<td style="color: var(--text-muted); font-family: monospace;">${u.password}</td>` : ''}
+                    <td>
+                        <span style="color: ${u.status === 'pending' ? '#facc15' : '#4ade80'}; text-transform: uppercase; font-size: 0.8rem; font-weight: bold;">
+                            ${u.status} (${u.role})
+                        </span>
+                    </td>
+                    <td style="text-align: right;">
+                        ${u.status === 'pending' ? `<button onclick="updateUserRole('${id}', 'approved', 'user', '${u.username}')" class="action-btn" style="color: #4ade80;">Aprobar</button>` : ''}
+                        ${(userRole === 'admin' && u.role === 'user' && u.status !== 'pending') ? `<button onclick="updateUserRole('${id}', 'approved', 'coadmin', '${u.username}')" class="action-btn" style="color: #3b82f6;">Hacer CoAdmin</button>` : ''}
+                        ${userRole === 'admin' ? `<button onclick="deleteUser('${id}', '${u.username}')" class="action-btn btn-salir">Eliminar</button>` : ''}
+                    </td>
+                </tr>
+            `;
+        });
+    } catch (error) {
+        console.error("Error cargando usuarios:", error);
+    }
 }
 
-window.updateRole = (uid, role) => {
-    let users = getLocal('users');
-    let u = users.find(x => x.uid === uid);
-    if(u) u.role = role;
-    setLocal('users', users);
-    loadUsersManagementView();
-}
-
-window.deleteUser = (uid) => {
-    if(confirm("¿Eliminar usuario?")) {
-        setLocal('users', getLocal('users').filter(x => x.uid !== uid));
+window.updateUserRole = async (id, status, role, name) => {
+    try {
+        await db.collection("users").doc(id).update({ status, role });
+        logActivity(`🛡️ Cambio de rol para '${name}': ${role}`);
         loadUsersManagementView();
+    } catch (error) {
+        console.error("Error al actualizar rol:", error);
+        alert("No se pudo actualizar el rol.");
+    }
+}
+
+window.deleteUser = async (id, name) => {
+    if(confirm(`⚠️ ¿Seguro que quieres eliminar a ${name}?`)) {
+        try {
+            await db.collection("users").doc(id).delete();
+            logActivity(`🗑️ Usuario ELIMINADO: '${name}'`);
+            loadUsersManagementView();
+        } catch (error) {
+            console.error("Error al eliminar usuario:", error);
+            alert("No se pudo eliminar el usuario.");
+        }
     }
 }
 
