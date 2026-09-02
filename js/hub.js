@@ -1,13 +1,10 @@
 // =========================================================
-// MODO LOCAL: Lógica separada
+// MODO NUBE (FIREBASE FIRESTORE): Sin dependencias locales
 // =========================================================
 
 let currentUser = null;
 let userRole = 'guest'; 
 let userData = null;
-
-function getLocal(key) { return JSON.parse(localStorage.getItem(key) || '[]'); }
-function setLocal(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
 
 function initApp() {
     const session = localStorage.getItem('session');
@@ -27,21 +24,33 @@ function logout() {
     routeUser();
 }
 
-function fetchUserRoleAndRender() {
+async function fetchUserRoleAndRender() {
     if (!currentUser) return;
+    
+    // Si es el Admin Supremo hardcodeado
     if(currentUser.username === 'GAAdmin') {
         userRole = 'admin';
         userData = currentUser;
-    } else {
-        const users = getLocal('users');
-        const u = users.find(x => x.uid === currentUser.uid);
-        if(u) {
-            userRole = u.role;
+        routeUser();
+        return;
+    }
+
+    try {
+        // Consultamos directamente el documento del usuario en Firestore usando su ID guardado en sesión
+        const docRef = await db.collection("users").doc(currentUser.uid).get();
+        if(docRef.exists) {
+            const u = docRef.data();
+            userRole = u.status === 'approved' ? u.role : 'pending';
             userData = u;
         } else {
             userRole = 'guest';
             userData = null;
+            localStorage.removeItem('session');
         }
+    } catch (error) {
+        console.error("Error al sincronizar rol desde la nube:", error);
+        userRole = 'guest';
+        userData = null;
     }
     routeUser();
 }
@@ -76,48 +85,36 @@ function renderAuthView(container) {
 
     document.getElementById('auth-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        // .trim() limpia cualquier espacio accidental al inicio o final
         const user = document.getElementById('username').value.trim();
         const pass = document.getElementById('password').value.trim();
         const msg = document.getElementById('auth-msg');
 
         // 1. Acceso del Admin Supremo
         if(user === 'GAAdmin' && pass === '9GAO282517219') {
-            currentUser = {uid: 'admin_id_000', username: 'GAAdmin', role: 'admin'};
+            currentUser = { uid: 'admin_id_000', username: 'GAAdmin', role: 'admin' };
             localStorage.setItem('session', JSON.stringify(currentUser));
             fetchUserRoleAndRender();
             return;
         }
 
         try {
-            console.log(`Intentando buscar el usuario: "${user}" con contraseña: "${pass}"`);
-            
-            // Buscar el usuario en Firebase
+            // 2. Buscar el usuario estrictamente en Firestore
             const snapshot = await db.collection("users").where("username", "==", user).get();
 
             if (!snapshot.empty) {
                 const userDoc = snapshot.docs[0];
                 const userDataFields = userDoc.data();
-                console.log("Usuario encontrado en Firestore:", userDataFields);
 
-                // Comparamos contraseñas haciendo trim por seguridad
                 if (String(userDataFields.password).trim() === String(pass).trim()) {
-                    if (userDataFields.status !== 'approved') {
-                        msg.textContent = "Tu cuenta aún está pendiente de aprobación por el Admin.";
-                        msg.style.color = "#facc15";
-                        return;
-                    }
                     currentUser = { uid: userDoc.id, username: userDataFields.username, role: userDataFields.role };
                     localStorage.setItem('session', JSON.stringify(currentUser));
                     fetchUserRoleAndRender();
                 } else {
-                    console.warn(`Contraseña errónea. En BD: "${userDataFields.password}" vs Ingresada: "${pass}"`);
                     msg.textContent = "Contraseña incorrecta.";
                     msg.style.color = "#ef4444";
                 }
             } else {
-                console.warn(`El usuario "${user}" no existe en la colección 'users'.`);
-                // Si no existe, lo creamos como pendiente de forma limpia
+                // 3. Si no existe, lo creamos automáticamente como pendiente en la nube
                 await db.collection("users").add({
                     username: user,
                     password: pass,
@@ -147,7 +144,7 @@ function renderPendingView(container) {
         <div style="display:flex; justify-content:center; align-items:center; height:100vh;">
             <div class="table-container" style="padding: 40px; text-align: center;">
                 <h2>Solicitud Pendiente</h2>
-                <p style="color: var(--text-muted); margin: 20px 0;">El Administrador debe aprobar tu cuenta.</p>
+                <p style="color: var(--text-muted); margin: 20px 0;">El Administrador debe aprobar tu cuenta para acceder al contenido.</p>
                 <button onclick="logout()" class="nav-btn btn-salir" style="margin: 0 auto;">Salir</button>
             </div>
         </div>
@@ -199,19 +196,16 @@ function renderDashboardView(container) {
         </div>
     `;
 
-    // 1. Conectar Menú Proyectos
     document.getElementById('nav-projects').addEventListener('click', () => {
         setActiveNav('nav-projects');
         loadProjectsView();
     });
 
-    // 2. Conectar Menú Comunidad
     document.getElementById('nav-community').addEventListener('click', () => {
         setActiveNav('nav-community');
         loadCommunityView();
     });
 
-    // 3. Conectar Menú Admin (Si existe)
     if(document.getElementById('nav-users')) {
         document.getElementById('nav-users').addEventListener('click', () => {
             setActiveNav('nav-users');
@@ -219,7 +213,6 @@ function renderDashboardView(container) {
         });
     }
 
-    // 4. Conectar Menú Logs (Si existe)
     if(document.getElementById('nav-logs')) {
         document.getElementById('nav-logs').addEventListener('click', () => {
             setActiveNav('nav-logs');
@@ -227,7 +220,6 @@ function renderDashboardView(container) {
         });
     }
 
-    // Lógica para guardar el proyecto en Firebase
     document.getElementById('new-project-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
@@ -269,10 +261,9 @@ function loadProjectsView() {
         <div id="projects-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;"></div>
     `;
 
-    // Escuchar los proyectos de Firebase en tiempo real
     db.collection("projects").orderBy("createdAt", "desc").onSnapshot(snapshot => {
         const grid = document.getElementById('projects-grid');
-        if(!grid) return; // Evita errores si cambias de pestaña muy rápido
+        if(!grid) return;
         
         grid.innerHTML = '';
 
@@ -285,7 +276,6 @@ function loadProjectsView() {
             const p = doc.data();
             const id = doc.id;
 
-            // Filtro de privacidad
             if (!p.isPublic && p.ownerId !== currentUser.uid && userRole !== 'admin') return;
 
             grid.innerHTML += `
@@ -310,7 +300,6 @@ function loadProjectsView() {
     });
 }
 
-// Función global para borrar proyectos en Firebase
 window.deleteProject = async (id) => {
     if(confirm("⚠️ ¿Estás seguro de que quieres eliminar este proyecto?")) {
         try {
@@ -323,7 +312,6 @@ window.deleteProject = async (id) => {
     }
 }
 
-// Función de ayuda para iluminar el botón activo en el menú
 function setActiveNav(id) {
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById(id).classList.add('active');
@@ -346,9 +334,9 @@ function loadCommunityView() {
         </div>
     `;
 
-    // Escuchar mensajes en tiempo real
     db.collection("chat").orderBy("timestamp", "asc").onSnapshot(snapshot => {
         const box = document.getElementById('chatBox');
+        if(!box) return;
         box.innerHTML = '';
         snapshot.forEach(doc => {
             const msg = doc.data();
@@ -364,7 +352,6 @@ function loadCommunityView() {
         box.scrollTop = box.scrollHeight;
     });
 
-    // Enviar con la tecla Enter
     document.getElementById('chatInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') sendMessage();
     });
@@ -407,6 +394,7 @@ function loadLogsView() {
 
     db.collection("logs").orderBy("timestamp", "desc").limit(50).onSnapshot(snapshot => {
         const box = document.getElementById('logsBox');
+        if(!box) return;
         box.innerHTML = '';
         snapshot.forEach(doc => {
             const log = doc.data();
@@ -449,6 +437,7 @@ async function loadUsersManagementView() {
     try {
         const snapshot = await db.collection("users").get();
         const tbody = document.getElementById('usersTableBody');
+        if(!tbody) return;
         tbody.innerHTML = '';
 
         if (snapshot.empty) {
@@ -459,6 +448,9 @@ async function loadUsersManagementView() {
         snapshot.forEach(doc => {
             const u = doc.data();
             const id = doc.id;
+
+            // Ocultar al admin supremo de la tabla de moderación común si se desea
+            if(u.username === 'GAAdmin') return;
 
             tbody.innerHTML += `
                 <tr>
