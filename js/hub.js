@@ -1,5 +1,5 @@
 // =========================================================
-// MODO NUBE (FIREBASE FIRESTORE): Completo con Foro Avanzado
+// MODO NUBE (FIREBASE FIRESTORE): Foro Privacidad Estricta
 // =========================================================
 
 let currentUser = null;
@@ -27,7 +27,6 @@ function logout() {
 async function fetchUserRoleAndRender() {
     if (!currentUser) return;
     
-    // Si es el Admin Supremo hardcodeado
     if(currentUser.username === 'GAAdmin') {
         userRole = 'admin';
         userData = currentUser;
@@ -88,7 +87,6 @@ function renderAuthView(container) {
         const pass = document.getElementById('password').value.trim();
         const msg = document.getElementById('auth-msg');
 
-        // 1. Acceso del Admin Supremo
         if(user === 'GAAdmin' && pass === '9GAO282517219') {
             currentUser = { uid: 'admin_id_000', username: 'GAAdmin', role: 'admin' };
             localStorage.setItem('session', JSON.stringify(currentUser));
@@ -315,7 +313,7 @@ function setActiveNav(id) {
 }
 
 // ==========================================
-// SECCIÓN: COMUNIDAD (CHAT AVANZADO CON MENCIONES Y SUSURROS)
+// SECCIÓN: COMUNIDAD (CHAT SEGURO Y PRIVADO)
 // ==========================================
 function loadCommunityView() {
     let adminClearBtn = (userRole === 'admin' || userRole === 'coadmin') 
@@ -326,7 +324,7 @@ function loadCommunityView() {
             <div>
                 <h2>Foro de Comunidad</h2>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">
-                    📜 <strong>Reglas del Chat:</strong> Respeta a tus compañeros. Usa <code style="color: var(--blue-accent);">@usuario</code> para mencionar, <code style="color: var(--blue-accent);">@/usuario "mensaje"</code> para susurrar privadamente, y <code style="color: var(--blue-accent);">#NombreProyecto</code> para enlazar proyectos. Queda prohibido el spam y lenguaje ofensivo.
+                    📜 <strong>Reglas del Chat:</strong> Usa <code style="color: var(--blue-accent);">@usuario</code> o <code style="color: var(--blue-accent);">@/usuario "mensaje"</code> para susurrar. Los proyectos privados solo pueden enlazarse en susurros por su creador o el Admin.
                 </p>
             </div>
             ${adminClearBtn}
@@ -334,17 +332,16 @@ function loadCommunityView() {
         <div class="table-container" style="display: flex; flex-direction: column; height: 55vh; position: relative;">
             <div id="chatBox" style="flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;"></div>
             
-            <!-- Caja de Autocompletado (Menciones y Proyectos) -->
+            <!-- Caja de Autocompletado -->
             <div id="chatSuggestions" style="display: none; position: absolute; bottom: 70px; left: 15px; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 5px; width: 250px; max-height: 150px; overflow-y: auto; z-index: 10;"></div>
 
             <div style="padding: 15px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; position: relative;">
-                <input type="text" id="chatInput" placeholder="Escribe un mensaje... (@ para mencionar, # para proyecto)" style="flex-grow: 1; padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
+                <input type="text" id="chatInput" placeholder="Escribe un mensaje... (@ para mencionar, @/ para susurrar, # para proyecto)" style="flex-grow: 1; padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
                 <button onclick="sendMessage()" class="btn-primary">Enviar</button>
             </div>
         </div>
     `;
 
-    // Escuchar mensajes en tiempo real
     db.collection("chat").orderBy("timestamp", "asc").onSnapshot(snapshot => {
         const box = document.getElementById('chatBox');
         if(!box) return;
@@ -355,9 +352,9 @@ function loadCommunityView() {
             const id = doc.id;
             const isMe = msg.user === userData.username;
             
-            // Si es un susurro (@/), verificar si va dirigido a mí o lo envié yo
+            // Filtro de visualización de susurros
             if(msg.isWhisper && msg.targetUser !== userData.username && msg.user !== userData.username && userRole !== 'admin') {
-                return; // Ocultar si no es para mí
+                return;
             }
 
             let whisperBadge = msg.isWhisper ? `<span style="background: #9333ea; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 5px;">SUSURRO a @${msg.targetUser}</span>` : '';
@@ -389,14 +386,13 @@ function loadCommunityView() {
     });
 }
 
-// Dar formato enriquecido a menciones (@) y proyectos (#)
 function formatChatMessage(text) {
     return text
         .replace(/@([a-zA-Z0-9_]+)/g, '<span style="color: #38bdf8; font-weight: bold; background: rgba(56, 189, 248, 0.1); padding: 2px 4px; border-radius: 4px;">@$1</span>')
         .replace(/#([a-zA-Z0-9_\-]+)/g, '<span style="color: #4ade80; font-weight: bold; background: rgba(74, 222, 128, 0.1); padding: 2px 4px; border-radius: 4px;"><i class="fas fa-folder"></i> #$1</span>');
 }
 
-// Autocompletado inteligente para @ (usuarios) y # (proyectos)
+// Autocompletado inteligente con soporte integrado para @, @/ y filtrado de proyectos privados
 async function setupChatAutocomplete() {
     const input = document.getElementById('chatInput');
     const box = document.getElementById('chatSuggestions');
@@ -407,30 +403,48 @@ async function setupChatAutocomplete() {
         const cursorPos = this.selectionStart;
         const textBeforeCursor = val.substring(0, cursorPos);
         
-        // Detectar si está escribiendo @ o #
-        const matchAt = textBeforeCursor.match(/@([a-zA-Z0-9_]*)$/);
+        // Detectar si se escribió @, @/ o #
+        const matchAt = textBeforeCursor.match(/(@\/|@)([a-zA-Z0-9_]*)$/);
         const matchHash = textBeforeCursor.match(/#([a-zA-Z0-9_\-]*)$/);
 
         if (matchAt) {
-            const query = matchAt[1].toLowerCase();
+            const query = matchAt[2].toLowerCase();
+            const symbol = matchAt[1]; // "@" o "@/"
             const usersSnap = await db.collection("users").get();
             let html = '';
+            
+            // Asegurar que GAAdmin aparezca siempre en las recomendaciones
+            let adminFound = false;
+
             usersSnap.forEach(doc => {
                 const u = doc.data();
+                if(u.username === 'GAAdmin') adminFound = true;
                 if(u.username.toLowerCase().includes(query)) {
-                    html += `<div onclick="insertAutocomplete('@${u.username}')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;">@${u.username}</div>`;
+                    html += `<div onclick="insertAutocomplete('${symbol}${u.username}')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;">${symbol}${u.username}</div>`;
                 }
             });
+
+            if(!adminFound && 'gaadmin'.includes(query)) {
+                html += `<div onclick="insertAutocomplete('${symbol}GAAdmin')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;">${symbol}GAAdmin (Supremo)</div>`;
+            }
+
             box.innerHTML = html;
             box.style.display = html ? 'block' : 'none';
         } else if (matchHash) {
             const query = matchHash[1].toLowerCase();
             const projSnap = await db.collection("projects").get();
             let html = '';
+            
             projSnap.forEach(doc => {
                 const p = doc.data();
-                if(p.title.toLowerCase().includes(query)) {
-                    html += `<div onclick="insertAutocomplete('#${p.title.replace(/\s+/g, '_')}')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-folder"></i> #${p.title}</div>`;
+                const isOwnerOrAdmin = (p.ownerId === currentUser.uid || userRole === 'admin');
+                
+                // REGLA DE PRIVACIDAD: Solo mostrar proyectos públicos O privados si eres creador/admin
+                if (p.isPublic || isOwnerOrAdmin) {
+                    if(p.title.toLowerCase().includes(query)) {
+                        let privIcon = p.isPublic ? '' : ' <i class="fas fa-lock" style="color: #facc15; font-size: 0.7rem;"></i>';
+                        html += `<div onclick="insertAutocomplete('#${p.title.replace(/\s+/g, '_')}')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-folder"></i> #${p.title}${privIcon}</div>`;
+                    }
                 }
             });
             box.innerHTML = html;
@@ -447,7 +461,6 @@ window.insertAutocomplete = (text) => {
     const val = input.value;
     const cursorPos = input.selectionStart;
     
-    // Reemplazar la palabra actual por la sugerencia seleccionada
     const lastAtIndex = val.lastIndexOf('@', cursorPos);
     const lastHashIndex = val.lastIndexOf('#', cursorPos);
     const index = Math.max(lastAtIndex, lastHashIndex);
@@ -467,12 +480,42 @@ window.sendMessage = async () => {
     let isWhisper = false;
     let targetUser = null;
 
-    // Sintaxis de susurro: @/usuario "mensaje" o @/usuario mensaje
     if(text.startsWith('@/')) {
         const parts = text.split(' ');
         if(parts.length > 1) {
             targetUser = parts[0].substring(2);
             isWhisper = true;
+
+            // VALIDACIÓN DE SEGURIDAD PARA PROYECTOS PRIVADOS EN SUSURROS
+            const matchHash = text.match(/#([a-zA-Z0-9_\-]+)/);
+            if (matchHash) {
+                const projName = matchHash[1].replace(/_/g, ' ');
+                // Buscar el proyecto en Firestore para validar permisos
+                const projSnap = await db.collection("projects").where("title", "==", projName).get();
+                if(!projSnap.empty) {
+                    const projData = projSnap.docs[0].data();
+                    const isOwnerOrAdmin = (projData.ownerId === currentUser.uid || userRole === 'admin');
+                    if(!projData.isPublic && !isOwnerOrAdmin) {
+                        alert("⚠️ No tienes permisos para enlazar este proyecto privado.");
+                        return;
+                    }
+                }
+            }
+        }
+    } else {
+        // Si no es susurro, bloquear tajantemente cualquier intento de mandar proyectos privados
+        const matchHash = text.match(/#([a-zA-Z0-9_\-]+)/);
+        if (matchHash) {
+            const projName = matchHash[1].replace(/_/g, ' ');
+            const projSnap = await db.collection("projects").where("title", "==", projName).get();
+            if(!projSnap.empty) {
+                const projData = projSnap.docs[0].data();
+                const isOwnerOrAdmin = (projData.ownerId === currentUser.uid || userRole === 'admin');
+                if(!projData.isPublic && !isOwnerOrAdmin) {
+                    alert("⚠️ Los proyectos privados solo pueden ser enlazados mediante susurros (@/) por su creador o el Admin.");
+                    return;
+                }
+            }
         }
     }
 
@@ -614,7 +657,6 @@ async function loadUsersManagementView() {
     }
 }
 
-// Función especial para que el Admin se auto-registre en la base de datos (aparezca en la tabla y en las menciones)
 window.registerAdminInDB = async () => {
     try {
         const snapshot = await db.collection("users").where("username", "==", "GAAdmin").get();
