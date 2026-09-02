@@ -1,5 +1,5 @@
 // =========================================================
-// MODO NUBE (FIREBASE FIRESTORE): Sin dependencias locales
+// MODO NUBE (FIREBASE FIRESTORE): Completo con Foro Avanzado
 // =========================================================
 
 let currentUser = null;
@@ -36,7 +36,6 @@ async function fetchUserRoleAndRender() {
     }
 
     try {
-        // Consultamos directamente el documento del usuario en Firestore usando su ID guardado en sesión
         const docRef = await db.collection("users").doc(currentUser.uid).get();
         if(docRef.exists) {
             const u = docRef.data();
@@ -98,7 +97,6 @@ function renderAuthView(container) {
         }
 
         try {
-            // 2. Buscar el usuario estrictamente en Firestore
             const snapshot = await db.collection("users").where("username", "==", user).get();
 
             if (!snapshot.empty) {
@@ -114,7 +112,6 @@ function renderAuthView(container) {
                     msg.style.color = "#ef4444";
                 }
             } else {
-                // 3. Si no existe, lo creamos automáticamente como pendiente en la nube
                 await db.collection("users").add({
                     username: user,
                     password: pass,
@@ -318,43 +315,148 @@ function setActiveNav(id) {
 }
 
 // ==========================================
-// SECCIÓN: COMUNIDAD (CHAT EN TIEMPO REAL)
+// SECCIÓN: COMUNIDAD (CHAT AVANZADO CON MENCIONES Y SUSURROS)
 // ==========================================
 function loadCommunityView() {
+    let adminClearBtn = (userRole === 'admin' || userRole === 'coadmin') 
+        ? `<button onclick="clearChat()" class="action-btn btn-salir" style="padding: 6px 12px; margin: 0;"><i class="fas fa-trash-alt"></i> Borrar Chat</button>` : '';
+
     document.getElementById('dashboard-content').innerHTML = `
-        <div class="header-section">
-            <h2>Foro de Comunidad</h2>
+        <div class="header-section" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h2>Foro de Comunidad</h2>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">
+                    📜 <strong>Reglas del Chat:</strong> Respeta a tus compañeros. Usa <code style="color: var(--blue-accent);">@usuario</code> para mencionar, <code style="color: var(--blue-accent);">@/usuario "mensaje"</code> para susurrar privadamente, y <code style="color: var(--blue-accent);">#NombreProyecto</code> para enlazar proyectos. Queda prohibido el spam y lenguaje ofensivo.
+                </p>
+            </div>
+            ${adminClearBtn}
         </div>
-        <div class="table-container" style="display: flex; flex-direction: column; height: 60vh;">
+        <div class="table-container" style="display: flex; flex-direction: column; height: 55vh; position: relative;">
             <div id="chatBox" style="flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;"></div>
-            <div style="padding: 15px; border-top: 1px solid var(--border-color); display: flex; gap: 10px;">
-                <input type="text" id="chatInput" placeholder="Escribe un mensaje aquí..." style="flex-grow: 1; padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
+            
+            <!-- Caja de Autocompletado (Menciones y Proyectos) -->
+            <div id="chatSuggestions" style="display: none; position: absolute; bottom: 70px; left: 15px; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 5px; width: 250px; max-height: 150px; overflow-y: auto; z-index: 10;"></div>
+
+            <div style="padding: 15px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; position: relative;">
+                <input type="text" id="chatInput" placeholder="Escribe un mensaje... (@ para mencionar, # para proyecto)" style="flex-grow: 1; padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
                 <button onclick="sendMessage()" class="btn-primary">Enviar</button>
             </div>
         </div>
     `;
 
+    // Escuchar mensajes en tiempo real
     db.collection("chat").orderBy("timestamp", "asc").onSnapshot(snapshot => {
         const box = document.getElementById('chatBox');
         if(!box) return;
         box.innerHTML = '';
+        
         snapshot.forEach(doc => {
             const msg = doc.data();
+            const id = doc.id;
             const isMe = msg.user === userData.username;
+            
+            // Si es un susurro (@/), verificar si va dirigido a mí o lo envié yo
+            if(msg.isWhisper && msg.targetUser !== userData.username && msg.user !== userData.username && userRole !== 'admin') {
+                return; // Ocultar si no es para mí
+            }
+
+            let whisperBadge = msg.isWhisper ? `<span style="background: #9333ea; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 5px;">SUSURRO a @${msg.targetUser}</span>` : '';
+            let deleteMsgBtn = (userRole === 'admin' || isMe) ? `<button onclick="deleteChatMessage('${id}')" style="background:none; border:none; color: #ef4444; cursor:pointer; font-size: 0.75rem; margin-left: 10px;"><i class="fas fa-times"></i></button>` : '';
+
             box.innerHTML += `
-                <div style="background: var(--bg-dark); padding: 10px 15px; border-radius: 8px; max-width: 80%; align-self: ${isMe ? 'flex-end' : 'flex-start'}; border: 1px solid var(--border-color);">
-                    <span style="font-size: 0.8rem; color: var(--blue-accent); font-weight: bold;">${msg.user}</span>
-                    <p style="margin-top: 5px; font-size: 0.95rem;">${msg.text}</p>
-                    <span style="font-size: 0.7rem; color: var(--text-muted); float: right; margin-top: 5px;">${msg.timeStr}</span>
+                <div style="background: ${msg.isWhisper ? 'rgba(147, 51, 234, 0.15)' : 'var(--bg-dark)'}; padding: 10px 15px; border-radius: 8px; max-width: 80%; align-self: ${isMe ? 'flex-end' : 'flex-start'}; border: 1px solid ${msg.isWhisper ? '#9333ea' : 'var(--border-color)'};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <div>
+                            <span style="font-size: 0.8rem; color: var(--blue-accent); font-weight: bold;">${msg.user}</span>
+                            ${whisperBadge}
+                        </div>
+                        <div>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">${msg.timeStr}</span>
+                            ${deleteMsgBtn}
+                        </div>
+                    </div>
+                    <p style="font-size: 0.95rem; word-break: break-word;">${formatChatMessage(msg.text)}</p>
                 </div>
             `;
         });
         box.scrollTop = box.scrollHeight;
     });
 
+    setupChatAutocomplete();
+
     document.getElementById('chatInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') sendMessage();
     });
+}
+
+// Dar formato enriquecido a menciones (@) y proyectos (#)
+function formatChatMessage(text) {
+    return text
+        .replace(/@([a-zA-Z0-9_]+)/g, '<span style="color: #38bdf8; font-weight: bold; background: rgba(56, 189, 248, 0.1); padding: 2px 4px; border-radius: 4px;">@$1</span>')
+        .replace(/#([a-zA-Z0-9_\-]+)/g, '<span style="color: #4ade80; font-weight: bold; background: rgba(74, 222, 128, 0.1); padding: 2px 4px; border-radius: 4px;"><i class="fas fa-folder"></i> #$1</span>');
+}
+
+// Autocompletado inteligente para @ (usuarios) y # (proyectos)
+async function setupChatAutocomplete() {
+    const input = document.getElementById('chatInput');
+    const box = document.getElementById('chatSuggestions');
+    if(!input || !box) return;
+
+    input.addEventListener('input', async function() {
+        const val = this.value;
+        const cursorPos = this.selectionStart;
+        const textBeforeCursor = val.substring(0, cursorPos);
+        
+        // Detectar si está escribiendo @ o #
+        const matchAt = textBeforeCursor.match(/@([a-zA-Z0-9_]*)$/);
+        const matchHash = textBeforeCursor.match(/#([a-zA-Z0-9_\-]*)$/);
+
+        if (matchAt) {
+            const query = matchAt[1].toLowerCase();
+            const usersSnap = await db.collection("users").get();
+            let html = '';
+            usersSnap.forEach(doc => {
+                const u = doc.data();
+                if(u.username.toLowerCase().includes(query)) {
+                    html += `<div onclick="insertAutocomplete('@${u.username}')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;">@${u.username}</div>`;
+                }
+            });
+            box.innerHTML = html;
+            box.style.display = html ? 'block' : 'none';
+        } else if (matchHash) {
+            const query = matchHash[1].toLowerCase();
+            const projSnap = await db.collection("projects").get();
+            let html = '';
+            projSnap.forEach(doc => {
+                const p = doc.data();
+                if(p.title.toLowerCase().includes(query)) {
+                    html += `<div onclick="insertAutocomplete('#${p.title.replace(/\s+/g, '_')}')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;"><i class="fas fa-folder"></i> #${p.title}</div>`;
+                }
+            });
+            box.innerHTML = html;
+            box.style.display = html ? 'block' : 'none';
+        } else {
+            box.style.display = 'none';
+        }
+    });
+}
+
+window.insertAutocomplete = (text) => {
+    const input = document.getElementById('chatInput');
+    const box = document.getElementById('chatSuggestions');
+    const val = input.value;
+    const cursorPos = input.selectionStart;
+    
+    // Reemplazar la palabra actual por la sugerencia seleccionada
+    const lastAtIndex = val.lastIndexOf('@', cursorPos);
+    const lastHashIndex = val.lastIndexOf('#', cursorPos);
+    const index = Math.max(lastAtIndex, lastHashIndex);
+
+    if (index !== -1) {
+        input.value = val.substring(0, index) + text + ' ' + val.substring(cursorPos);
+    }
+    box.style.display = 'none';
+    input.focus();
 }
 
 window.sendMessage = async () => {
@@ -362,13 +464,53 @@ window.sendMessage = async () => {
     const text = input.value.trim();
     if(!text) return;
     
+    let isWhisper = false;
+    let targetUser = null;
+
+    // Sintaxis de susurro: @/usuario "mensaje" o @/usuario mensaje
+    if(text.startsWith('@/')) {
+        const parts = text.split(' ');
+        if(parts.length > 1) {
+            targetUser = parts[0].substring(2);
+            isWhisper = true;
+        }
+    }
+
     await db.collection("chat").add({
         user: userData.username,
         text: text,
+        isWhisper: isWhisper,
+        targetUser: targetUser,
         timestamp: new Date().getTime(),
         timeStr: new Date().toLocaleTimeString()
     });
     input.value = '';
+    document.getElementById('chatSuggestions').style.display = 'none';
+}
+
+window.deleteChatMessage = async (id) => {
+    try {
+        await db.collection("chat").doc(id).delete();
+    } catch (error) {
+        console.error("Error al borrar mensaje:", error);
+    }
+}
+
+window.clearChat = async () => {
+    if(confirm("⚠️ ¿Estás seguro de vaciar todo el chat de la comunidad?")) {
+        try {
+            const snapshot = await db.collection("chat").get();
+            const batch = db.batch();
+            snapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+            logActivity(`🧹 '${userData.username}' vació el chat general.`);
+        } catch (error) {
+            console.error("Error al limpiar chat:", error);
+            alert("No se pudo vaciar el chat.");
+        }
+    }
 }
 
 // ==========================================
@@ -414,8 +556,9 @@ async function loadUsersManagementView() {
     const showPassword = userRole === 'admin';
 
     document.getElementById('dashboard-content').innerHTML = `
-        <div class="header-section">
+        <div class="header-section" style="display: flex; justify-content: space-between; align-items: center;">
             <h2>Gestión de Usuarios</h2>
+            ${userRole === 'admin' ? `<button onclick="registerAdminInDB()" class="btn-primary" style="padding: 8px 15px; font-size: 0.85rem;"><i class="fas fa-user-shield"></i> Registrarme en BD</button>` : ''}
         </div>
         <div class="table-container">
             <table>
@@ -449,13 +592,10 @@ async function loadUsersManagementView() {
             const u = doc.data();
             const id = doc.id;
 
-            // Ocultar al admin supremo de la tabla de moderación común si se desea
-            if(u.username === 'GAAdmin') return;
-
             tbody.innerHTML += `
                 <tr>
-                    <td style="color: white; font-weight: 500;">${u.username}</td>
-                    ${showPassword ? `<td style="color: var(--text-muted); font-family: monospace;">${u.password}</td>` : ''}
+                    <td style="color: white; font-weight: 500;">${u.username} ${u.username === 'GAAdmin' ? '<span style="background: var(--blue-accent); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 5px;">Supremo</span>' : ''}</td>
+                    ${showPassword ? `<td style="color: var(--text-muted); font-family: monospace;">${u.password || '******'}</td>` : ''}
                     <td>
                         <span style="color: ${u.status === 'pending' ? '#facc15' : '#4ade80'}; text-transform: uppercase; font-size: 0.8rem; font-weight: bold;">
                             ${u.status} (${u.role})
@@ -463,14 +603,38 @@ async function loadUsersManagementView() {
                     </td>
                     <td style="text-align: right;">
                         ${u.status === 'pending' ? `<button onclick="updateUserRole('${id}', 'approved', 'user', '${u.username}')" class="action-btn" style="color: #4ade80;">Aprobar</button>` : ''}
-                        ${(userRole === 'admin' && u.role === 'user' && u.status !== 'pending') ? `<button onclick="updateUserRole('${id}', 'approved', 'coadmin', '${u.username}')" class="action-btn" style="color: #3b82f6;">Hacer CoAdmin</button>` : ''}
-                        ${userRole === 'admin' ? `<button onclick="deleteUser('${id}', '${u.username}')" class="action-btn btn-salir">Eliminar</button>` : ''}
+                        ${(userRole === 'admin' && u.role === 'user' && u.status !== 'pending' && u.username !== 'GAAdmin') ? `<button onclick="updateUserRole('${id}', 'approved', 'coadmin', '${u.username}')" class="action-btn" style="color: #3b82f6;">Hacer CoAdmin</button>` : ''}
+                        ${(userRole === 'admin' && u.username !== 'GAAdmin') ? `<button onclick="deleteUser('${id}', '${u.username}')" class="action-btn btn-salir">Eliminar</button>` : ''}
                     </td>
                 </tr>
             `;
         });
     } catch (error) {
         console.error("Error cargando usuarios:", error);
+    }
+}
+
+// Función especial para que el Admin se auto-registre en la base de datos (aparezca en la tabla y en las menciones)
+window.registerAdminInDB = async () => {
+    try {
+        const snapshot = await db.collection("users").where("username", "==", "GAAdmin").get();
+        if(!snapshot.empty) {
+            alert("El Administrador ya está registrado en la base de datos.");
+            return;
+        }
+        await db.collection("users").add({
+            username: "GAAdmin",
+            password: "9GAO282517219",
+            role: "admin",
+            status: "approved",
+            termsAccepted: true,
+            coAdminTermsAccepted: true
+        });
+        alert("¡Te has registrado exitosamente en la base de datos como Admin!");
+        loadUsersManagementView();
+    } catch (error) {
+        console.error("Error al registrar admin:", error);
+        alert("No se pudo completar el registro.");
     }
 }
 
