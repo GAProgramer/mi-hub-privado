@@ -65,7 +65,7 @@ function renderAuthView(container) {
             <div class="table-container" style="padding: 40px; width: 100%; max-width: 400px; text-align: center;">
                 <h2 style="margin-bottom: 20px; color: var(--blue-accent);">Acceso al Hub</h2>
                 <form id="auth-form" style="display: flex; flex-direction: column; gap: 15px;">
-                    <input id="username" type="text" placeholder="Usuario" required style="padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
+                    <input id="username" type="text" placeholder="Usuario" autocomplete="username" required style="padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
                     <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password" required style="padding: 10px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-dark); color: white;">
                     <button type="submit" class="btn-primary" style="justify-content: center;">Ingresar / Registrarse</button>
                 </form>
@@ -80,7 +80,6 @@ function renderAuthView(container) {
         const pass = document.getElementById('password').value.trim();
         const msg = document.getElementById('auth-msg');
 
-        // 1. Acceso del Admin Supremo
         if(user === 'GAAdmin' && pass === '9GAO282517219') {
             currentUser = {uid: 'admin_id_000', username: 'GAAdmin', role: 'admin'};
             localStorage.setItem('session', JSON.stringify(currentUser));
@@ -89,11 +88,9 @@ function renderAuthView(container) {
         }
 
         try {
-            // 2. Consultar directamente en Firebase Firestore
             const snapshot = await db.collection("users").where("username", "==", user).get();
 
             if (!snapshot.empty) {
-                // EL USUARIO SÍ EXISTE EN FIREBASE
                 const userDoc = snapshot.docs[0];
                 const userDataFields = userDoc.data();
 
@@ -111,8 +108,7 @@ function renderAuthView(container) {
                     msg.style.color = "#ef4444";
                 }
             } else {
-                // EL USUARIO NO EXISTE EN LA NUBE -> CREARLO AUTOMÁTICAMENTE
-                const newUserRef = await db.collection("users").add({
+                await db.collection("users").add({
                     username: user,
                     password: pass,
                     role: 'user',
@@ -135,7 +131,6 @@ function renderAuthView(container) {
         }
     });
 }
-
 function renderPendingView(container) {
     container.innerHTML = `
         <div style="display:flex; justify-content:center; align-items:center; height:100vh;">
