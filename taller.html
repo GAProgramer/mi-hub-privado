@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taller IDE - Hub de Proyectos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#1e1e1e] text-[#cccccc] font-sans h-screen flex overflow-hidden">
+
+    <!-- BARRA LATERAL (File Explorer & Outline) -->
+    <aside id="sidebar" class="w-64 bg-[#252526] flex flex-col border-r border-[#333] transition-all duration-300">
+        <!-- Archivos -->
+        <div class="flex justify-between items-center p-2 text-xs uppercase tracking-wider text-gray-400 border-b border-[#333]">
+            <span id="sidebarTitle">Explorador</span>
+            <button onclick="toggleSidebar()" class="hover:text-white px-1" title="Aplastar barra lateral">◀</button>
+        </div>
+        <ul id="fileList" class="p-2 space-y-1 text-sm font-mono">
+            <li onclick="switchTab('html')" id="tab-html" class="cursor-pointer bg-[#37373d] p-1.5 rounded text-orange-400 border-l-2 border-transparent">📄 index.html</li>
+            <li onclick="switchTab('css')" id="tab-css" class="cursor-pointer hover:bg-[#2a2d2e] p-1.5 rounded text-blue-400 border-l-2 border-transparent"># style.css</li>
+            <li onclick="switchTab('js')" id="tab-js" class="cursor-pointer hover:bg-[#2a2d2e] p-1.5 rounded text-yellow-400 border-l-2 border-transparent">{} script.js</li>
+        </ul>
+
+        <!-- Outline (Esquema) -->
+        <div class="p-2 text-xs uppercase tracking-wider text-gray-400 border-t border-b border-[#333] mt-2 flex justify-between items-center">
+            <span>Outline</span>
+            <button onclick="generateOutline()" class="hover:text-white" title="Actualizar Outline">🔄</button>
+        </div>
+        <div id="outlineBox" class="flex-1 p-2 overflow-y-auto text-xs font-mono text-blue-300 space-y-1 whitespace-nowrap">
+            <!-- El JS llenará esto -->
+        </div>
+    </aside>
+
+    <!-- ÁREA PRINCIPAL (Editor y Botones) -->
+    <main class="flex-1 flex flex-col relative min-w-0">
+        
+        <!-- Barra Superior (Topbar) -->
+        <header class="bg-[#2d2d2d] flex justify-between items-center p-2 border-b border-[#1e1e1e] shadow-md z-10">
+            <div class="flex items-center">
+                <button id="btnExpandSidebar" onclick="toggleSidebar()" class="hidden text-gray-400 hover:text-white mr-4 text-xl">▶</button>
+                <div id="currentFileTitle" class="bg-[#1e1e1e] px-6 py-1.5 text-sm font-mono border-t-2 border-blue-500 text-white rounded-t-sm">
+                    index.html
+                </div>
+            </div>
+            
+            <!-- Botones de Acción -->
+            <div class="flex gap-2">
+                <span id="saveStatus" class="text-xs text-gray-400 self-center mr-2"></span>
+                <button onclick="saveProjectData()" class="bg-[#007acc] hover:bg-[#005a9e] px-4 py-1.5 rounded-md text-sm text-white flex items-center font-bold transition">
+                    💾 Guardar
+                </button>
+                <button onclick="runPreview()" class="bg-green-600 hover:bg-green-700 px-4 py-1.5 rounded-md text-sm text-white flex items-center font-bold transition">
+                    ▶ Visualización
+                </button>
+                <!-- Ojo aquí: Cambiado a ProyectHub.html -->
+                <button onclick="window.location.href='ProyectHub.html'" class="bg-[#333] hover:bg-[#444] border border-[#555] px-4 py-1.5 rounded-md text-sm text-white font-bold transition">
+                    Volver
+                </button>
+            </div>
+        </header>
+
+        <!-- Editores de Código -->
+        <textarea id="editor-html" oninput="markUnsaved(); generateOutline()" class="flex-1 w-full bg-[#1e1e1e] p-6 text-sm font-mono text-[#d4d4d4] outline-none resize-none leading-relaxed focus:ring-1 focus:ring-blue-500" spellcheck="false" placeholder="<!-- Escribe tu HTML aquí -->"></textarea>
+        <textarea id="editor-css" oninput="markUnsaved()" class="hidden flex-1 w-full bg-[#1e1e1e] p-6 text-sm font-mono text-[#d4d4d4] outline-none resize-none leading-relaxed focus:ring-1 focus:ring-blue-500" spellcheck="false" placeholder="/* Escribe tu CSS aquí */"></textarea>
+        <textarea id="editor-js" oninput="markUnsaved()" class="hidden flex-1 w-full bg-[#1e1e1e] p-6 text-sm font-mono text-[#d4d4d4] outline-none resize-none leading-relaxed focus:ring-1 focus:ring-blue-500" spellcheck="false" placeholder="// Escribe tu JavaScript aquí"></textarea>
+    </main>
+
+    <!-- MODAL DE VISUALIZACIÓN -->
+    <div id="previewModal" class="hidden fixed inset-0 bg-black bg-opacity-95 z-50 flex flex-col backdrop-blur-sm">
+        <div class="p-3 bg-gray-900 flex justify-between items-center border-b border-gray-700">
+            <h3 id="previewTitle" class="text-white font-bold ml-4">Ejecutando Proyecto...</h3>
+            <button onclick="closePreview()" class="bg-red-600 hover:bg-red-700 text-white px-6 py-1.5 rounded font-bold transition">Cerrar Visualización</button>
+        </div>
+        <iframe id="previewFrame" class="flex-1 w-full bg-white"></iframe>
+    </div>
+
+    <!-- 1. Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <!-- 2. Tu conexión centralizada -->
+    <script src="js/firebase.js"></script>
+
+    <!-- 3. La lógica del Taller -->
+    <script src="js/taller.js"></script>
+</body>
+</html>
